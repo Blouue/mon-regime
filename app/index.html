@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Suivi de régime personnel : Apple Santé, menus Jow et recettes.">
+<meta name="theme-color" content="#fffdf8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121413" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Mon régime">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://*.supabase.co; manifest-src 'self'; worker-src 'self'; base-uri 'self'; form-action 'self'">
+<title>Mon régime</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="styles.css">
+<script type="module" src="js/main.js"></script>
+</head>
+<body>
+<header><h1 id="ttl">Aujourd'hui</h1><span class="date" id="today"></span></header>
+<main>
+<div class="demo" id="demo" hidden>Données d'exemple : elles disparaissent dès ta première vraie saisie.</div>
+<p class="status" id="st">Chargement…</p>
+
+<!-- AUJOURD'HUI -->
+<section data-v="aujourdhui">
+  <div class="lbl">
+    <h2>Valeurs du jour</h2>
+    <div class="hero">
+      <div><div class="small">Calories restantes</div><div class="big" id="left">–</div><div class="unit" id="kcalLine"></div></div>
+      <div><div class="meter"><i id="kcalBar"></i></div><div class="small" id="kcalPct"></div></div>
+    </div>
+    <div class="grid2" style="margin-top:12px">
+      <div class="stat"><div class="small">Poids</div><div class="v" id="wt">–</div><div class="small" id="wtD"></div></div>
+      <div class="stat"><div class="small">Pas</div><div class="v" id="steps">–</div><div class="meter"><i id="stepBar"></i></div><div class="small" id="stepGoal"></div></div>
+    </div>
+  </div>
+
+  <div class="lbl"><h2>Macros</h2><div id="macros"></div></div>
+
+  <div class="lbl">
+    <h2>Ce soir</h2>
+    <div class="tonight" id="tonight"></div>
+  </div>
+
+  <div class="lbl">
+    <h2>Journal des repas</h2>
+    <div id="meals"></div>
+    <form class="form f-meal" id="mealForm">
+      <select id="mM" aria-label="Moment"><option>Matin</option><option>Midi</option><option>Goûter</option><option>Soir</option></select>
+      <input id="mN" placeholder="Ce que tu as mangé" aria-label="Repas" required maxlength="300">
+      <input id="mK" inputmode="numeric" placeholder="kcal" aria-label="Calories">
+      <button>Ajouter</button>
+    </form>
+    <p class="small">Les totaux viennent d'Apple Santé (envoyés par Yazio). Ce journal sert de mémo.</p>
+  </div>
+
+  <div class="lbl" id="importBox">
+    <h2>Importer mes données Santé</h2>
+    <p class="small">Normalement le raccourci du soir les envoie tout seul. En secours, colle ici le texte <code>SANTE;date=…;poids=…</code>.</p>
+    <textarea id="imp" placeholder="Colle ici : SANTE;date=…;poids=…"></textarea>
+    <p class="small" id="impPrev"></p>
+    <button id="impBtn" type="button">Enregistrer</button>
+    <details><summary>Saisir à la main</summary>
+      <form class="form" id="manual">
+        <label>Date<input type="date" id="fD"></label>
+        <label>Poids (kg)<input id="fW" inputmode="decimal"></label>
+        <label>Pas<input id="fS" inputmode="numeric"></label>
+        <label>Calories<input id="fK" inputmode="numeric"></label>
+        <label>Protéines (g)<input id="fP" inputmode="numeric"></label>
+        <label>Glucides (g)<input id="fG" inputmode="numeric"></label>
+        <label>Lipides (g)<input id="fL" inputmode="numeric"></label>
+        <label>&nbsp;<button>Enregistrer</button></label>
+      </form>
+    </details>
+  </div>
+</section>
+
+<!-- ÉVOLUTION -->
+<section data-v="evolution">
+  <div class="lbl"><h2>Poids sur 30 jours</h2><p class="small" id="wtSum"></p><div class="fig"><svg id="cW" role="img" aria-label="Courbe du poids sur 30 jours"></svg></div></div>
+  <div class="lbl"><h2>Calories sur 7 jours</h2><p class="small">Le trait pointillé marque ton objectif.</p><div class="fig s"><svg id="cK" role="img" aria-label="Calories des 7 derniers jours"></svg></div></div>
+  <div class="lbl"><h2>Pas sur 7 jours</h2><div class="fig s"><svg id="cS" role="img" aria-label="Pas des 7 derniers jours"></svg></div></div>
+  <div class="lbl"><h2>Bilan de la semaine</h2><div id="bilan"></div></div>
+</section>
+
+<!-- REPAS JOW -->
+<section data-v="repas">
+  <div class="lbl">
+    <h2>Menu de la semaine</h2>
+    <div class="weeknav"><button class="ghost" id="wPrev" type="button" aria-label="Semaine précédente">‹</button><b id="wLbl"></b><button class="ghost" id="wNext" type="button" aria-label="Semaine suivante">›</button></div>
+    <div id="menu"></div>
+    <p class="small">Colle le lien de la recette depuis l'appli Jow (Partager → Copier le lien). Les champs s'enregistrent tout seuls.</p>
+  </div>
+  <div class="lbl" id="propBox">
+    <h2>Proposer une recette</h2>
+    <p class="small">Calée sur ce qu'il te reste aujourd'hui, ton garde-manger et tes ingrédients courants.</p>
+    <form class="form f-prop" id="propForm">
+      <select id="pMom" aria-label="Repas"><option>Soir</option><option>Midi</option><option>Matin</option><option>Goûter</option></select>
+      <input id="pEnv" placeholder="Une envie ? (ex. rapide, poisson, sans four)" aria-label="Envie" maxlength="200">
+      <button id="pBtn">Proposer</button>
+    </form>
+    <div id="pOut"></div>
+  </div>
+  <div class="lbl">
+    <h2>Mes ingrédients courants</h2>
+    <p class="small">Un par ligne : ce que tu achètes d'habitude. Les propositions de recettes s'en servent en priorité.</p>
+    <textarea id="ingr" style="min-height:160px"></textarea>
+    <p class="small" id="ingrSt"></p>
+  </div>
+  <div class="lbl">
+    <h2>Mon garde-manger</h2>
+    <p class="small">Ce que tu as déjà au frigo et dans les placards.</p>
+    <textarea id="placard" placeholder="2 courgettes, riz basmati, 6 œufs, feta…" maxlength="5000"></textarea>
+    <p class="small" id="placSt"></p>
+  </div>
+  <div class="lbl"><h2>Notes</h2><textarea id="notes" placeholder="Courses à prévoir, recettes à retester, idées…" style="min-height:140px"></textarea><p class="small" id="notesSt"></p></div>
+</section>
+
+<!-- CONNEXION -->
+<section data-v="connexion">
+  <div class="lbl" id="accBox">
+    <h2>Mon compte</h2>
+    <div id="accLocal" hidden>
+      <p>L'appli fonctionne en <b>mode local</b> : tes données restent sur cet appareil et ne se synchronisent pas.</p>
+      <p class="small">Pour synchroniser l'iPhone et le PC, renseigne l'URL et la clé publique de ton projet Supabase dans <code>config.js</code> (voir le README).</p>
+    </div>
+    <div id="accOut" hidden>
+      <p>Connecte-toi pour retrouver tes données sur l'iPhone et le PC. Tu reçois un e-mail avec un lien de connexion.</p>
+      <form class="form f-mail" id="mailForm">
+        <input id="email" type="email" autocomplete="email" placeholder="ton@adresse.fr" aria-label="Adresse e-mail" required>
+        <button>Recevoir le lien</button>
+      </form>
+      <form class="form f-mail" id="codeForm" hidden>
+        <input id="code" inputmode="numeric" autocomplete="one-time-code" placeholder="Code à 6 chiffres" aria-label="Code reçu par e-mail" pattern="[0-9]{6,10}" required>
+        <button>Valider le code</button>
+      </form>
+      <p class="small">Sur iPhone, depuis l'appli installée, utilise plutôt le <b>code</b> : le lien s'ouvre dans Safari, qui ne partage pas sa session avec l'appli.</p>
+    </div>
+    <div id="accIn" hidden>
+      <div class="row"><span>Connecté en tant que</span><b id="accMail"></b></div>
+      <div class="row"><span>Synchronisation</span><b id="syncSt">–</b></div>
+      <p><button class="ghost" id="logout" type="button">Se déconnecter</button></p>
+    </div>
+  </div>
+
+  <div class="lbl">
+    <h2>Mes objectifs</h2>
+    <form class="form" id="objForm">
+      <label>Calories / jour<input id="oK" inputmode="numeric"></label>
+      <label>Protéines (g)<input id="oP" inputmode="numeric"></label>
+      <label>Glucides (g)<input id="oG" inputmode="numeric"></label>
+      <label>Lipides (g)<input id="oL" inputmode="numeric"></label>
+      <label>Pas / jour<input id="oS" inputmode="numeric"></label>
+      <label>Poids visé (kg)<input id="oW" inputmode="decimal"></label>
+      <label>&nbsp;<button>Enregistrer</button></label>
+    </form>
+  </div>
+
+  <div class="lbl">
+    <h2>Yazio → Apple Santé</h2>
+    <ol class="steps">
+      <li>Dans Yazio : Profil → Réglages → Comptes et appareils connectés → Apple Santé.</li>
+      <li>Autorise l'écriture de l'<b>énergie alimentaire</b>, des <b>protéines</b>, <b>glucides</b> et <b>lipides</b>. Autorise aussi la lecture du poids si tu te pèses ailleurs.</li>
+      <li>Vérifie dans Santé → Parcourir → Nutrition que les repas du jour apparaissent.</li>
+    </ol>
+  </div>
+
+  <div class="lbl" id="shortcutBox">
+    <h2>Raccourci iPhone du soir</h2>
+    <div id="scOff"><p class="small">Connecte-toi d'abord à ton compte : le raccourci envoie tes données directement dans ton espace.</p></div>
+    <div id="scOn" hidden>
+      <p><b>1. Ton adresse d'envoi</b></p>
+      <div class="copy"><code id="scUrl"></code><button class="ghost" type="button" data-copy="scUrl">Copier</button></div>
+      <p><b>2. Ton jeton secret</b></p>
+      <p class="small" id="jetonSt"></p>
+      <div class="copy" id="jetonBox" hidden><code id="jetonVal"></code><button class="ghost" type="button" data-copy="jetonVal">Copier</button></div>
+      <p><button type="button" id="jetonBtn">Créer un jeton</button></p>
+      <p class="small">Le jeton ne s'affiche qu'une fois. Garde-le uniquement dans le raccourci. En cas de doute, crée-en un nouveau : l'ancien cesse aussitôt de fonctionner.</p>
+      <p><b>3. Le raccourci</b> : dans l'app <b>Raccourcis</b>, crée « Bilan Santé » avec ces actions, dans l'ordre :</p>
+      <ol class="steps">
+        <li><b>Rechercher des échantillons de santé</b> : Type = Poids, trier par Date de début (le plus récent d'abord), limite 1.</li>
+        <li><b>Rechercher des échantillons de santé</b> : Type = Nombre de pas, Date de début = Aujourd'hui. Puis <b>Calculer des statistiques</b> → Somme.</li>
+        <li>Même chose (recherche aujourd'hui + Somme) pour <b>Énergie alimentaire</b>, <b>Protéines</b>, <b>Glucides</b> et <b>Lipides</b>.</li>
+        <li><b>Obtenir le contenu de l'URL</b> : colle l'adresse ci-dessus. Touche « Afficher plus » :
+          <ul class="ing">
+            <li>Méthode : <b>POST</b></li>
+            <li>En-têtes : ajoute <code>X-Jeton</code> avec ton jeton comme valeur</li>
+            <li>Corps de la requête : <b>JSON</b>, avec ces champs (type Texte), en insérant chaque résultat comme variable :
+              <pre>date  → Date actuelle
+poids → Poids
+pas   → Somme des pas
+kcal  → Somme énergie
+prot  → Somme protéines
+gluc  → Somme glucides
+lip   → Somme lipides</pre></li>
+          </ul></li>
+        <li><b>Afficher la notification</b> avec le « Contenu de l'URL » : tu verras « Données du … enregistrées ».</li>
+      </ol>
+      <p>Puis Raccourcis → Automatisation → <b>Heure de la journée</b> (par ex. 21 h 30) → <b>Exécuter immédiatement</b> → « Bilan Santé ». Plus rien à coller : les données arrivent toutes seules.</p>
+      <p class="small">Les unités (« 78,4 kg ») et les virgules sont reconnues. Tu peux relancer le raccourci plusieurs fois par jour : la dernière valeur remplace la précédente.</p>
+    </div>
+  </div>
+
+  <div class="lbl">
+    <h2>Jow</h2>
+    <p>Jow ne partage pas ses données : ajoute tes recettes dans l'onglet Repas (nom + lien). La recette du jour s'affiche dans Aujourd'hui.</p>
+  </div>
+
+  <div class="lbl">
+    <h2>Installer l'appli</h2>
+    <p id="installDone" hidden class="ok">L'appli est installée sur cet appareil.</p>
+    <p><button type="button" id="installBtn" hidden>Installer sur cet appareil</button></p>
+    <div class="row"><span><b>iPhone</b> : ouvre cette page dans Safari, Partager → « Sur l'écran d'accueil ».</span></div>
+    <div class="row"><span><b>PC</b> : dans Chrome ou Edge, l'icône d'installation dans la barre d'adresse, ou menu ⋮ → « Installer Mon régime ».</span></div>
+    <p class="small" id="ver"></p>
+  </div>
+</section>
+</main>
+
+<nav class="tabs" aria-label="Onglets">
+  <a href="#aujourdhui" data-t="aujourdhui"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg>Aujourd'hui</a>
+  <a href="#evolution" data-t="evolution"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20h18M4 16l5-6 4 3 7-8"/></svg>Évolution</a>
+  <a href="#repas" data-t="repas"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3v8M5 3v5a2 2 0 0 0 4 0V3M7 11v10M16 21V3c-2 1-3 4-3 8h3"/></svg>Repas Jow</a>
+  <a href="#connexion" data-t="connexion"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 15l6-6M10 6l2-2a4 4 0 0 1 6 6l-2 2M14 18l-2 2a4 4 0 0 1-6-6l2-2"/></svg>Connexion</a>
+</nav>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
