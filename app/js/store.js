@@ -7,6 +7,8 @@ const iso = (d) => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.g
 const ago = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return iso(d); };
 
 export const empty = () => ({ days: {}, notes: null, obj: null, jeton: null });
+/** Champs d'une journée enregistrés en base. */
+export const CHAMPS = ['poids', 'pas', 'kcal', 'prot', 'gluc', 'lip', 'eau', 'faim', 'energie', 'humeur'];
 
 /* ---------------- Mode local ---------------- */
 const LKEY = 'mr-local';
@@ -16,7 +18,9 @@ const local = {
   write(r) { const { jeton, ...keep } = r; localStorage.setItem(LKEY, JSON.stringify(keep)); },
   async load() { return this.read(); },
   async mutate(fn) { const r = this.read(); fn(r); this.write(r); },
-  saveDay(date, vals, source = 'manuel') { return this.mutate((r) => { r.days[date] = { repas: [], ...r.days[date], ...vals, _maj: new Date().toISOString(), _src: source }; }); },
+  saveDay(date, vals, source = 'manuel') { return this.mutate((r) => { const a = r.days[date] || {}; r.days[date] = { repas: [], ...a, ...vals, ...(source ? { _maj: new Date().toISOString(), _src: source } : {}) }; }); },
+  saveDays(rows, source = 'export') { return this.mutate((r) => { for (const { date, ...v } of rows) r.days[date] = { repas: [], ...r.days[date], ...v, _maj: new Date().toISOString(), _src: source }; }); },
+  async exportAll() { const { jeton, ...r } = this.read(); return r; },
   addMeal(date, meal) {
     return this.mutate((r) => { const d = (r.days[date] ||= { repas: [] }); (d.repas ||= []).push({ id: crypto.randomUUID(), ...meal }); });
   },
@@ -33,7 +37,7 @@ const remote = {
   async load() {
     const [obj, jours, repas, notes, jeton] = await Promise.all([
       rest.get('objectifs?select=*'),
-      rest.get(`jours?select=*&date=gte.${ago(120)}`),
+      rest.get(`jours?select=*&date=gte.${ago(400)}&order=date`),
       rest.get(`repas?select=id,date,moment,nom,kcal&date=gte.${ago(14)}&order=created_at`),
       rest.get('notes?select=texte'),
       rest.get('jetons_import?select=cree_le,dernier_usage'),
@@ -57,9 +61,36 @@ const remote = {
     return r;
   },
   saveDay(date, vals, source = 'manuel') {
-    const row = { user_id: uid(), date, source };
-    for (const k of ['poids', 'pas', 'kcal', 'prot', 'gluc', 'lip']) if (vals[k] != null) row[k] = vals[k];
+    // source null : on ne touche pas à la source du jour (ex. l'eau ne doit pas masquer l'envoi du raccourci).
+    const row = { user_id: uid(), date, ...(source ? { source } : {}) };
+    for (const k of CHAMPS) if (vals[k] != null) row[k] = vals[k];
     return rest.upsert('jours', row, 'user_id,date');
+  },
+  /** Enregistre beaucoup de journées d'un coup (import de l'historique). N'écrase que les champs fournis. */
+  async saveDays(rows, source = 'export', progres) {
+    // PostgREST exige les mêmes colonnes dans un lot : on groupe les journées par ensemble de champs.
+    const groupes = new Map();
+    for (const { date, ...v } of rows) {
+      const ks = CHAMPS.filter((k) => v[k] != null); if (!ks.length) continue;
+      const cle = ks.join(','), ligne = { user_id: uid(), date, source };
+      for (const k of ks) ligne[k] = v[k];
+      (groupes.get(cle) || groupes.set(cle, []).get(cle)).push(ligne);
+    }
+    let fait = 0; const total = [...groupes.values()].reduce((t, g) => t + g.length, 0);
+    for (const g of groupes.values()) {
+      for (let i = 0; i < g.length; i += 400) {
+        await rest.upsert('jours', g.slice(i, i + 400), 'user_id,date');
+        fait += Math.min(400, g.length - i); progres?.(fait, total);
+      }
+    }
+    return total;
+  },
+  /** Toutes les données du compte, pour la sauvegarde. */
+  async exportAll() {
+    const tout = async (table, ordre) => { const res = []; for (let o = 0; ; o += 1000) { const p = await rest.get(`${table}?select=*&order=${ordre}&offset=${o}&limit=1000`); res.push(...p); if (p.length < 1000) return res; } };
+    const [jours, repas, obj, notes] = await Promise.all([tout('jours', 'date'), tout('repas', 'date'), rest.get('objectifs?select=*'), rest.get('notes?select=texte')]);
+    const nettoie = (l) => l.map(({ user_id, ...x }) => x);
+    return { jours: nettoie(jours), repas: nettoie(repas), objectifs: nettoie(obj)[0] || null, notes: notes[0]?.texte ?? '' };
   },
   addMeal(date, meal) { return rest.insert('repas', { user_id: uid(), date, moment: meal.m, nom: meal.nom, kcal: meal.kcal }); },
   deleteMeal(date, id) { return rest.del('repas?id=eq.' + encodeURIComponent(id)); },
@@ -95,6 +126,6 @@ export const store = {
   },
   clearCache() { Object.keys(localStorage).filter((k) => k.startsWith('mr-cache-')).forEach((k) => localStorage.removeItem(k)); },
 };
-for (const m of ['saveDay', 'addMeal', 'deleteMeal', 'saveText', 'saveObj', 'newJeton']) {
+for (const m of ['saveDay', 'saveDays', 'addMeal', 'deleteMeal', 'saveText', 'saveObj', 'newJeton', 'exportAll']) {
   store[m] = (...a) => store.backend[m](...a);
 }

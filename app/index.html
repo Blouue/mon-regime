@@ -28,6 +28,20 @@
 
 <!-- AUJOURD'HUI -->
 <section data-v="aujourdhui">
+  <div class="lbl alerte-card" id="manque" hidden>
+    <h2><span class="e" aria-hidden="true">📲</span> Il manque des données</h2>
+    <p id="manqueTxt"></p>
+    <div class="btns">
+      <a class="btn tom" id="manqueRun" href="shortcuts://run-shortcut?name=Bilan%20sant%C3%A9">Lancer le raccourci</a>
+      <button class="ghost" type="button" id="manqueSaisie">Saisir à la main</button>
+    </div>
+  </div>
+
+  <div class="lbl lundi-card" id="lundi" hidden>
+    <h2><span class="e" aria-hidden="true">🗓️</span> Ta semaine en bref<button class="x" type="button" id="lundiX" aria-label="Masquer le bilan de la semaine">×</button></h2>
+    <div id="lundiTxt"></div>
+  </div>
+
   <div class="lbl hero-card">
     <div class="ring-wrap">
       <svg class="ring" viewBox="0 0 120 120" aria-hidden="true"><circle class="trk" cx="60" cy="60" r="52"/><circle class="val" id="ringVal" cx="60" cy="60" r="52" stroke-dasharray="326.73" stroke-dashoffset="326.73"/></svg>
@@ -55,22 +69,15 @@
     </div>
   </div>
 
-  <div class="lbl">
-    <h2><span class="e" aria-hidden="true">📝</span> Mon journal</h2>
-    <div id="meals"></div>
-    <form id="mealForm" class="mealform">
-      <div class="seg" role="radiogroup" aria-label="Moment du repas">
-        <label><input type="radio" name="mom" value="Matin"><span class="e" aria-hidden="true">☀️</span>Matin</label>
-        <label><input type="radio" name="mom" value="Midi"><span class="e" aria-hidden="true">🥗</span>Midi</label>
-        <label><input type="radio" name="mom" value="Goûter"><span class="e" aria-hidden="true">🍎</span>Goûter</label>
-        <label><input type="radio" name="mom" value="Soir"><span class="e" aria-hidden="true">🌙</span>Soir</label>
-      </div>
-      <div class="f-meal">
-        <input id="mN" placeholder="Repas" aria-label="Ce que tu as mangé" required maxlength="300" enterkeyhint="done">
-        <input id="mK" inputmode="numeric" placeholder="kcal" aria-label="Calories (facultatif)">
-        <button class="primary" aria-label="Ajouter le repas">Ajouter</button>
-      </div>
-    </form>
+  <div class="lbl" id="eauBox">
+    <h2><span class="e" aria-hidden="true">💧</span> Eau <span class="small" id="eauTxt"></span></h2>
+    <div class="verres" id="verres" role="group" aria-label="Verres d'eau bus aujourd'hui"></div>
+    <p class="small">Un verre = 25 cl. Touche le dernier verre bu, ou touche-le de nouveau pour en retirer un.</p>
+  </div>
+
+  <div class="lbl" id="resBox">
+    <h2><span class="e" aria-hidden="true">😊</span> Comment ça va ?</h2>
+    <div id="ressenti"></div>
   </div>
 
   <details class="lbl fold" id="importBox">
@@ -103,7 +110,15 @@
 <!-- ÉVOLUTION -->
 <section data-v="evolution">
   <div class="tiles four span" id="bilan"></div>
-  <div class="lbl span"><h2><span class="e" aria-hidden="true">⚖️</span> Mon poids sur 30 jours</h2><p class="small" id="wtSum"></p><div class="fig"><svg id="cW" role="img" aria-label="Courbe du poids sur 30 jours"></svg></div></div>
+  <div class="lbl span"><h2><span class="e" aria-hidden="true">⚖️</span> Mon poids</h2>
+    <div class="seg" id="periode" role="radiogroup" aria-label="Période affichée">
+      <label><input type="radio" name="per" value="30" checked>30 jours</label>
+      <label><input type="radio" name="per" value="90">3 mois</label>
+      <label><input type="radio" name="per" value="365">1 an</label>
+    </div>
+    <p class="small" id="wtSum"></p><div class="fig"><svg id="cW" role="img" aria-label="Courbe du poids"></svg></div><p class="small legende"><span class="pt"></span> pesées <span class="tr"></span> tendance (moyenne sur 7 jours)</p></div>
+  <div class="lbl"><h2><span class="e" aria-hidden="true">🏅</span> Mes réussites</h2><div id="series"></div><div class="badges" id="badges"></div></div>
+  <div class="lbl"><h2><span class="e" aria-hidden="true">🗓️</span> Ma semaine dernière</h2><div id="semaine"></div></div>
   <div class="lbl"><h2><span class="e" aria-hidden="true">🔥</span> Calories de la semaine</h2><p class="small">Le pointillé, c'est ton objectif.</p><div class="fig s"><svg id="cK" role="img" aria-label="Calories des 7 derniers jours"></svg></div></div>
   <div class="lbl"><h2><span class="e" aria-hidden="true">👟</span> Pas de la semaine</h2><div class="fig s"><svg id="cS" role="img" aria-label="Pas des 7 derniers jours"></svg></div></div>
 </section>
@@ -207,7 +222,7 @@
       <p><b>3. Le raccourci</b> « Bilan santé », dans l'app <b>Raccourcis</b>, dans l'ordre :</p>
       <ol class="steps">
         <li><b>Rechercher des échantillons de santé</b> : Type Poids, Date de début est aujourd'hui, Unité kg, trié par Date de début (ordre décroissant), limite 1. Puis <b>Définir une variable</b> <code>Poids</code>.</li>
-        <li><b>Rechercher des échantillons de santé</b> : Type Pas, aujourd'hui, Unité nombre. <b>Calculer des statistiques</b> → Somme. <b>Définir une variable</b> <code>Pas</code>.</li>
+        <li><b>Rechercher des échantillons de santé</b> : Type Pas, aujourd'hui, Unité nombre, <b>Grouper par Jour</b> (évite de compter deux fois les pas enregistrés par plusieurs appareils). <b>Calculer des statistiques</b> → Somme. <b>Définir une variable</b> <code>Pas</code>.</li>
         <li>Pareil pour <b>Énergie alimentaire</b> (Unité kcal) → variable <code>Kcal</code>. Facultatif : Protéines, Glucides, Lipides (Unité g) → <code>Prot</code>, <code>Gluc</code>, <code>Lip</code>.</li>
         <li><b>Obtenir le contenu de l'URL</b> : l'adresse ci-dessus, méthode <b>POST</b>, en-tête <code>X-Jeton</code> = ton jeton, corps <b>JSON</b> avec les champs <code>poids</code>, <code>pas</code>, <code>kcal</code> (et <code>prot</code>, <code>gluc</code>, <code>lip</code>), chacun rempli avec sa variable.</li>
         <li><b>Afficher la notification</b> avec le « Contenu de l'URL ».</li>
@@ -216,6 +231,28 @@
       <p>Lancement automatique : en haut du raccourci, <b>À 21:30</b>, Heure de la journée, Tous les jours.</p>
     </div>
   </details>
+
+  <details class="lbl fold" id="histBox">
+    <summary><h2><span class="e" aria-hidden="true">📥</span> Importer mon historique</h2></summary>
+    <p>Récupère d'un coup ton poids, tes pas et tes calories des mois passés, depuis l'export d'Apple Santé.</p>
+    <ol class="steps">
+      <li>Sur l'iPhone, ouvre <b>Santé</b> et touche ta <b>photo</b> en haut à droite.</li>
+      <li>Tout en bas : <b>Exporter toutes les données de santé</b> → <b>Exporter</b>. Patiente, ça peut prendre quelques minutes.</li>
+      <li>Choisis <b>Enregistrer dans Fichiers</b>.</li>
+      <li>Ici, touche le bouton ci-dessous et choisis <b>export.zip</b>.</li>
+    </ol>
+    <div class="form"><label>Période<select id="histPer"><option value="90">3 derniers mois</option><option value="365" selected>12 derniers mois</option><option value="730">2 dernières années</option><option value="0">Tout</option></select></label>
+      <label>&nbsp;<button type="button" class="primary" id="histBtn">Choisir export.zip</button></label></div>
+    <input type="file" id="histFile" accept=".zip,.xml,application/zip,text/xml" hidden>
+    <div class="meter" id="histBarre" hidden><i id="histProg" style="width:0%"></i></div>
+    <p class="small" id="histSt">Le fichier est lu sur cet appareil, il n'est envoyé nulle part : seuls les totaux de chaque jour sont enregistrés. Les jours déjà remplis sont complétés, pas effacés.</p>
+  </details>
+
+  <div class="lbl">
+    <h2><span class="e" aria-hidden="true">💾</span> Mes données</h2>
+    <p class="small">Une copie de sauvegarde de tout ton suivi, à garder où tu veux.</p>
+    <div class="btns"><button type="button" class="ghost" id="expJson">Exporter (JSON)</button><button type="button" class="ghost" id="expCsv">Exporter pour Excel (CSV)</button></div>
+  </div>
 
   <div class="lbl" id="installBox">
     <h2><span class="e" aria-hidden="true">📥</span> Installer l'appli</h2>

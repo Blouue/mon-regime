@@ -3,8 +3,10 @@ import { configured, currentUser, onAuth, handleRedirect, sendMagicLink, verifyC
 import { num, parseSanteText, normalize } from './parse.js';
 import { lineChart, barChart } from './charts.js';
 import { ACTIVITES, RYTHMES, activiteDepuisPas, profilComplet, calculer } from './calcul.js';
+import { tendanceAu, projection, serie, badges, semaineDerniere } from './suivi.js';
+import { lireExportSante } from './export-sante.js';
 
-const VERSION = '1.6.0';
+const VERSION = '1.7.0';
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const pad = (n) => String(n).padStart(2, '0');
@@ -27,9 +29,7 @@ function demoData() {
     w -= 0.09 + Math.sin(i * 2.3) * 0.18;
     days[d] = { poids: +w.toFixed(1), pas: Math.round(5200 + r * 6200), kcal: Math.round(1580 + Math.cos(i * 1.3) * 260), prot: Math.round(95 + r * 25), gluc: Math.round(160 + Math.cos(i) * 30), lip: Math.round(55 + Math.sin(i) * 10), repas: [] };
   }
-  days[T] = { poids: days[T].poids, pas: 6240, kcal: 1385, prot: 88, gluc: 142, lip: 47, repas: [
-    { id: 'd1', m: 'Matin', nom: "Skyr, flocons d'avoine, myrtilles", kcal: 340 }, { id: 'd2', m: 'Midi', nom: 'Salade lentilles, feta, concombre', kcal: 560 },
-    { id: 'd3', m: 'Goûter', nom: "Pomme et 15 g d'amandes", kcal: 175 }, { id: 'd4', m: 'Soir', nom: 'Poulet curry coco & riz', kcal: 520 }] };
+  days[T] = { poids: days[T].poids, pas: 6240, kcal: 1385, prot: 88, gluc: 142, lip: 47, eau: 5, faim: 2, energie: 4, humeur: 4, repas: [] };
   return { days, notes: 'Acheter : potimarron, skyr, lentilles corail.\nRefaire le chili, en doublant les haricots.', obj: { ...DEF_OBJ } };
 }
 
@@ -85,6 +85,14 @@ function setStatus() {
 /** « Dernier envoi aujourd'hui à 21:31 · raccourci iPhone » sous le bilan du jour. */
 function renderFresh() {
   const el = $('fresh');
+  const du = !demo && store.mode === 'remote' && real.jeton?.dernier_usage;
+  if (du) {
+    const t = new Date(du), ti = iso(t);
+    const quand = ti === T ? "aujourd'hui" : ti === iso(addD(TODAY, -1)) ? 'hier' : 'le ' + t.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
+    el.textContent = `📲 Raccourci : dernier envoi ${quand} à ${t.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
+    el.classList.toggle('old', Date.now() - t > 30 * 3600e3);
+    return;
+  }
   const ks = demo ? [] : Object.keys(S.days).filter((k) => S.days[k]._maj).sort((a, b) => (S.days[a]._maj < S.days[b]._maj ? -1 : 1));
   if (!ks.length) { el.textContent = ''; return; }
   const x = S.days[ks.at(-1)], t = new Date(x._maj), ti = iso(t);
@@ -110,8 +118,9 @@ function renderToday() {
   $('goal').textContent = fr.format(o.kcal);
   const lw = lastWeight(T);
   $('wt').innerHTML = lw ? esc(fr1.format(lw.v)) + ' <span class="unit">kg</span>' : '–';
-  const prev = lw && lastWeight(iso(addD(fromIso(lw.d), -7)));
-  const dw = lw && prev ? lw.v - prev.v : null;
+  // Variation sur 7 jours calculée sur la tendance lissée, moins sensible aux variations d'un jour à l'autre
+  const t0 = tendanceAu(S.days, iso(addD(TODAY, -7))), t1 = tendanceAu(S.days, T);
+  const dw = lw && t0 != null && t1 != null ? t1 - t0 : null;
   $('wtD').innerHTML = lw ? (dw != null ? `<span class="${dw <= 0 ? 'good' : 'bad'}">${dw <= 0 ? '↓' : '↑'} ${esc(fr1.format(Math.abs(dw)))} kg</span> en 7 jours` : '') + (lw.d !== T ? (dw != null ? '<br>' : '') + 'pesée du ' + esc(frDate(lw.d, { day: 'numeric', month: 'short' })) : '') : 'Pas encore de pesée';
   $('steps').textContent = d.pas == null ? '–' : fr.format(d.pas);
   $('stepBar').style.width = Math.min(100, (d.pas || 0) / o.pas * 100) + '%';
@@ -123,13 +132,52 @@ function renderToday() {
   $('macroBox').hidden = !demo && !Object.keys(S.days).some((k) => k >= depuis && ['prot', 'gluc', 'lip'].some((f) => S.days[k][f] != null));
   const M = [['🥩 Protéines', 'prot', o.prot], ['🍞 Glucides', 'gluc', o.gluc], ['🥑 Lipides', 'lip', o.lip]];
   $('macros').innerHTML = M.map(([n, f, g]) => { const v = d[f] || 0; return `<div class="macro ${f}"><span>${n}</span><div class="meter"><i style="width:${Math.min(100, v / g * 100)}%"></i></div><b>${esc(fr.format(v))} / ${fr.format(g)} g</b></div>`; }).join('');
-  const rep = d.repas || [];
-  $('meals').innerHTML = rep.length
-    ? rep.map((m) => `<div class="meal"><span class="mo ${esc(m.m)}" title="${esc(m.m)}" aria-label="${esc(m.m)}">${MOMENTS[m.m] || '🍴'}</span><span>${esc(m.nom)}</span><span>${m.kcal != null && m.kcal !== '' ? '<span class="k">' + esc(fr.format(m.kcal)) + ' kcal</span>' : ''}</span><button class="x" data-del="${esc(m.id)}" aria-label="Supprimer ${esc(m.nom)}">×</button></div>`).join('')
-    : '<p class="empty"><span class="e" aria-hidden="true">🍽️</span>Rien de noté pour l\'instant.</p>';
+  renderEau(d); renderRessenti(d); renderManque(); renderLundi();
 }
 
-const MOMENTS = { Matin: '☀️', Midi: '🥗', Goûter: '🍎', Soir: '🌙' };
+/* ---------- Eau : 8 verres de 25 cl ---------- */
+function renderEau(d) {
+  const n = d.eau || 0;
+  $('verres').innerHTML = Array.from({ length: 8 }, (_, i) => `<button type="button" class="${i < n ? 'on' : ''}" data-verre="${i + 1}" aria-label="${i + 1} verre${i ? 's' : ''}" aria-pressed="${i < n}">💧</button>`).join('');
+  $('eauTxt').textContent = n ? `${String(n * 0.25).replace('.', ',')} L${n >= 8 ? ' · bravo 🎉' : ''}` : '';
+}
+
+/* ---------- Ressenti du jour : faim, énergie, humeur (1 à 5) ---------- */
+const ECHELLES = [
+  ['faim', 'Faim', ['😌', '🙂', '😋', '😬', '😫'], ['Rassasié', 'Un peu', 'Normale', 'Faim', 'Très faim']],
+  ['energie', 'Énergie', ['🪫', '😴', '😐', '🙂', '⚡'], ['À plat', 'Fatigué', 'Moyenne', 'En forme', 'Au top']],
+  ['humeur', 'Humeur', ['😞', '😕', '😐', '🙂', '😄'], ['Pas top', 'Bof', 'Neutre', 'Bien', 'Super']],
+];
+function renderRessenti(d) {
+  $('ressenti').innerHTML = ECHELLES.map(([k, nom, em, lib]) => `<div class="echelle" role="group" aria-label="${nom}"><span>${nom}</span>${em.map((e, i) => `<button type="button" class="${d[k] === i + 1 ? 'on' : ''}" data-res="${k}" data-val="${i + 1}" aria-label="${nom} : ${lib[i]}" aria-pressed="${d[k] === i + 1}" title="${lib[i]}">${e}</button>`).join('')}</div>`).join('');
+}
+
+/* ---------- Alerte quand le raccourci n'a rien envoyé ---------- */
+function renderManque() {
+  const box = $('manque');
+  if (demo || store.mode !== 'remote' || !real.jeton) { box.hidden = true; return; }
+  const du = real.jeton.dernier_usage ? new Date(real.jeton.dernier_usage) : null;
+  const dh = S.days[iso(addD(TODAY, -1))];
+  // Envoi trop ancien (raccourci pas lancé, ou iPhone verrouillé à 21 h 30) et journée d'hier incomplète
+  const vieux = !du || Date.now() - du > 30 * 3600e3, hierVide = !dh || (dh.kcal == null && dh.pas == null);
+  box.hidden = !(vieux && hierVide);
+  if (box.hidden) return;
+  const depuis = du ? 'depuis le ' + du.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }) : 'pour le moment';
+  $('manqueTxt').textContent = `Le raccourci n'a rien envoyé ${depuis}. Souvent, l'iPhone était verrouillé à 21 h 30 et iOS a bloqué la lecture de Santé. Lance-le maintenant pour envoyer les chiffres du jour, et saisis hier à la main si besoin.`;
+  $('manqueRun').hidden = !/iPhone|iPad/.test(navigator.userAgent);
+}
+
+/* ---------- Bilan de la semaine : le lundi sur l'écran du jour, toujours dans Évolution ---------- */
+function htmlSemaine(b) {
+  if (b.vide) return '<p class="small">Pas assez de données la semaine dernière. Ça viendra !</p>';
+  return `<p class="small">${esc(b.titre)}</p><ul class="phrases">${b.phrases.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>`;
+}
+function renderLundi() {
+  const b = semaineDerniere(S.days, S.obj, T);
+  const masque = localStorage.getItem('mr-lundi') === b.lundi;
+  $('lundi').hidden = demo || TODAY.getDay() !== 1 || masque || b.vide;
+  if (!$('lundi').hidden) $('lundiTxt').innerHTML = htmlSemaine(b);
+}
 
 /** Un petit mot d'encouragement, jamais culpabilisant. */
 function renderCheer(d, o, dw) {
@@ -152,25 +200,48 @@ function renderCheer(d, o, dw) {
 
 /* ---------- Rendu : Évolution ---------- */
 function renderEvo() {
-  const o = S.obj, p30 = [], p7k = [], p7s = [];
-  for (let i = 29; i >= 0; i--) { const d = addD(TODAY, -i), x = S.days[iso(d)] || {}; p30.push({ v: x.poids ?? null, l: d.getDate() + '/' + (d.getMonth() + 1) }); }
+  const o = S.obj, p30 = [], p7k = [], p7s = [], per = +(choisi('per') || 30);
+  const mois = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+  for (let i = per - 1; i >= 0; i--) {
+    const d = addD(TODAY, -i), k = iso(d), x = S.days[k] || {};
+    p30.push({ v: x.poids ?? null, t: x.poids ? tendanceAu(S.days, k) : null, l: per > 120 ? mois[d.getMonth()] : d.getDate() + '/' + (d.getMonth() + 1) });
+  }
   for (let i = 6; i >= 0; i--) { const d = addD(TODAY, -i), x = S.days[iso(d)] || {}, l = JOURS[(d.getDay() + 6) % 7]; p7k.push({ v: x.kcal ?? null, l }); p7s.push({ v: x.pas ?? null, l }); }
   lineChart($('cW'), p30, o.poidsCible); barChart($('cK'), p7k, o.kcal, 'kcal'); barChart($('cS'), p7s, o.pas, 'pas');
-  const ws = p30.filter((p) => p.v != null);
-  $('wtSum').textContent = ws.length > 1 ? `${fr1.format(ws[0].v)} → ${fr1.format(ws.at(-1).v)} kg, soit ${ws.at(-1).v - ws[0].v <= 0 ? '' : '+'}${fr1.format(ws.at(-1).v - ws[0].v)} kg sur la période.` : '';
+  // Résumé : variation de la tendance sur la période, rythme actuel et projection
+  const ts = p30.filter((p) => p.t != null);
+  let resume = ts.length > 1 ? `Tendance : ${fr1.format(ts[0].t)} → ${fr1.format(ts.at(-1).t)} kg (${ts.at(-1).t - ts[0].t <= 0 ? '−' : '+'}${fr1.format(Math.abs(ts.at(-1).t - ts[0].t))} kg).` : '';
+  const pr = projection(S.days, T, o.poidsCible);
+  if (pr.pente != null) resume += ` Rythme : ${pr.pente <= 0 ? '−' : '+'}${fr1.format(Math.abs(pr.pente * 7))} kg par semaine.`;
+  if (pr.atteint) resume += ' 🎉 Poids visé atteint !';
+  else if (pr.date) resume += ` À ce rythme, ton objectif est atteint vers ${pr.date.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })} 🎯`;
+  $('wtSum').textContent = resume;
   const k = p7k.filter((p) => p.v != null), s = p7s.filter((p) => p.v != null);
   const avg = (a) => (a.length ? Math.round(a.reduce((t, p) => t + p.v, 0) / a.length) : null);
   const inGoal = k.filter((p) => p.v <= o.kcal).length;
-  const lw = lastWeight(T), pw = lw && lastWeight(iso(addD(TODAY, -7)));
+  const lw = lastWeight(T), tw0 = tendanceAu(S.days, iso(addD(TODAY, -7))), tw1 = tendanceAu(S.days, T);
   // Le bilan de la semaine en quatre tuiles, du plus parlant au plus détaillé.
   const reste = lw && o.poidsCible ? lw.v - o.poidsCible : null;
   const tiles = [
-    ['sky', '⚖️', 'Cette semaine', lw && pw ? `${lw.v - pw.v <= 0 ? '−' : '+'}${fr1.format(Math.abs(lw.v - pw.v))} kg` : '–'],
+    ['sky', '⚖️', 'Cette semaine', tw0 != null && tw1 != null ? `${tw1 - tw0 <= 0 ? '−' : '+'}${fr1.format(Math.abs(tw1 - tw0))} kg` : '–'],
     ['grape', '🏁', 'Avant ton objectif', reste == null ? '–' : reste > 0 ? fr1.format(reste) + ' kg' : 'Atteint 🎉'],
     ['tom', '🔥', 'Jours dans l\'objectif', k.length ? `${inGoal} / ${k.length}` : '–'],
     ['herb', '👟', 'Pas par jour', avg(s) != null ? fr.format(avg(s)) : '–'],
   ];
   $('bilan').innerHTML = tiles.map(([c, e, l, v]) => `<div class="tile ${c}"><div class="t-h"><span class="e" aria-hidden="true">${e}</span> ${l}</div><div class="v">${esc(v)}</div></div>`).join('');
+  renderReussites();
+  $('semaine').innerHTML = htmlSemaine(semaineDerniere(S.days, o, T));
+}
+
+/* ---------- Séries et badges ---------- */
+function renderReussites() {
+  const o = S.obj, sr = [
+    ['🔥', serie(S.days, o, T, 'kcal'), 'dans ton objectif calories'],
+    ['👟', serie(S.days, o, T, 'pas'), `à ${fr.format(o.pas)} pas ou plus`],
+    ['💧', serie(S.days, o, T, 'eau'), "à 2 litres d'eau"],
+  ];
+  $('series').innerHTML = sr.map(([e, n, l]) => `<div class="serie"><span class="e" aria-hidden="true">${e}</span><span>${n ? `<b>${n} jour${n > 1 ? 's' : ''}</b> d'affilée ${l}` : `Lance une série : un jour ${l}`}</span></div>`).join('');
+  $('badges').innerHTML = badges(S.days, o).map((x) => `<div class="badge${x.ok ? '' : ' lock'}" title="${x.ok ? 'Gagné' : 'À débloquer'}"><span class="e" aria-hidden="true">${x.e}</span>${esc(x.nom)}</div>`).join('');
 }
 
 function renderNotes() { if (document.activeElement !== $('notes')) $('notes').value = S.notes || ''; }
@@ -324,15 +395,82 @@ function bind() {
     if (await act(() => store.saveDay(date, vals, 'manuel'), 'Données du ' + frDate(date) + ' enregistrées')) e.target.querySelectorAll('input:not([type=date])').forEach((i) => { i.value = ''; });
   });
 
-  // Repas du jour
-  // Moment présélectionné selon l'heure : matin avant 10 h, midi avant 15 h, goûter avant 18 h, soir ensuite.
-  const h = new Date().getHours();
-  const momDef = h < 10 ? 'Matin' : h < 15 ? 'Midi' : h < 18 ? 'Goûter' : 'Soir';
-  document.querySelector(`input[name=mom][value="${momDef}"]`).checked = true;
-  $('mealForm').addEventListener('submit', async (e) => {
-    e.preventDefault(); const nom = $('mN').value.trim(); if (!nom) return;
-    const kcal = num($('mK').value), m = document.querySelector('input[name=mom]:checked')?.value || momDef;
-    if (await act(() => store.addMeal(T, { m, nom, kcal: kcal == null ? null : Math.round(kcal) }))) { $('mN').value = ''; $('mK').value = ''; }
+  // Eau et ressenti : enregistrés aussitôt, l'écran se met à jour sans attendre
+  const majJour = async (vals) => {
+    if (store.mode === 'signed-out') { toast("Connecte-toi (onglet Connexion) pour enregistrer"); return; }
+    if (demo) { real.days[T] = { repas: [], ...real.days[T] }; }
+    const avant = { ...(real.days[T] || {}) };
+    real.days[T] = { repas: [], ...avant, ...vals }; applyReal();
+    try { await store.saveDay(T, vals, null); }
+    catch (e) { real.days[T] = avant; applyReal(); toast(e.code === 'offline' ? 'Hors ligne : réessaie une fois connecté' : 'Échec : ' + e.message); }
+  };
+  $('verres').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-verre]'); if (!b) return;
+    const n = +b.dataset.verre, cur = S.days[T]?.eau || 0;
+    majJour({ eau: n === cur ? n - 1 : n });
+  });
+  $('ressenti').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-res]'); if (!b) return;
+    majJour({ [b.dataset.res]: +b.dataset.val });
+  });
+
+  // Alerte « il manque des données » : saisie à la main de la veille
+  $('manqueSaisie').addEventListener('click', () => {
+    $('importBox').open = true; $('fD').value = iso(addD(TODAY, -1));
+    $('importBox').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+  // Bilan du lundi : masqué jusqu'à la semaine suivante
+  $('lundiX').addEventListener('click', () => { localStorage.setItem('mr-lundi', semaineDerniere(S.days, S.obj, T).lundi); $('lundi').hidden = true; });
+  // Période du graphique de poids
+  document.querySelectorAll('input[name=per]').forEach((i) => i.addEventListener('change', renderEvo));
+
+  // Import de l'historique Apple Santé
+  $('histBtn').addEventListener('click', () => {
+    if (store.mode === 'signed-out') { toast("Connecte-toi (onglet Connexion) pour enregistrer"); return; }
+    $('histFile').click();
+  });
+  $('histFile').addEventListener('change', async () => {
+    const file = $('histFile').files[0]; $('histFile').value = '';
+    if (!file) return;
+    const jours = +$('histPer').value, depuis = jours ? iso(addD(TODAY, -jours)) : '0000-00-00';
+    const st = $('histSt'), barre = $('histBarre'), prog = $('histProg'), btn = $('histBtn');
+    btn.disabled = true; barre.hidden = false; prog.style.width = '0%';
+    try {
+      st.textContent = '📖 Lecture du fichier… (ça peut prendre une minute pour un gros export)';
+      const r = await lireExportSante(file, { depuis, avant: T, progres: (x) => { prog.style.width = Math.round(x * 70) + '%'; } });
+      if (!r.lignes.length) { st.textContent = '🤔 Aucune donnée de poids, de pas ou de calories trouvée sur cette période.'; return; }
+      st.textContent = `💾 Enregistrement de ${fr.format(r.lignes.length)} jours…`;
+      await store.saveDays(r.lignes, 'export', (fait, total) => { prog.style.width = Math.round(70 + (fait / total) * 30) + '%'; });
+      prog.style.width = '100%';
+      const premier = frDate(r.lignes[0].date, { day: 'numeric', month: 'long', year: 'numeric' });
+      st.textContent = `🎉 ${fr.format(r.lignes.length)} jours importés, depuis le ${premier}. Va voir l'onglet Évolution !`;
+      await refresh();
+    } catch (e) {
+      st.textContent = '😕 Import impossible : ' + (e.message || e);
+    } finally { btn.disabled = false; setTimeout(() => { barre.hidden = true; }, 1500); }
+  });
+
+  // Sauvegarde de mes données
+  const telecharger = (nom, contenu, type) => {
+    const url = URL.createObjectURL(new Blob([contenu], { type }));
+    const a = document.createElement('a'); a.href = url; a.download = nom; document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  };
+  const donnees = async () => {
+    if (store.mode === 'signed-out') { toast("Connecte-toi (onglet Connexion) pour exporter tes données"); return null; }
+    try { return await store.exportAll(); } catch (e) { toast('Export impossible : ' + e.message); return null; }
+  };
+  $('expJson').addEventListener('click', async () => {
+    const d = await donnees(); if (!d) return;
+    telecharger(`mon-regime-${T}.json`, JSON.stringify({ exporte_le: new Date().toISOString(), ...d }, null, 2), 'application/json');
+  });
+  $('expCsv').addEventListener('click', async () => {
+    const d = await donnees(); if (!d) return;
+    // Format Excel français : point-virgule et virgule décimale, encodage UTF-8 avec BOM
+    const cols = ['date', 'poids', 'pas', 'kcal', 'prot', 'gluc', 'lip', 'eau', 'faim', 'energie', 'humeur'];
+    const lignes = d.jours || Object.entries(d.days || {}).map(([date, x]) => ({ date, ...x }));
+    const csv = [cols.join(';'), ...lignes.sort((a, b) => (a.date < b.date ? -1 : 1)).map((l) => cols.map((c) => (l[c] == null ? '' : String(l[c]).replace('.', ','))).join(';'))].join('\r\n');
+    telecharger(`mon-regime-${T}.csv`, '\ufeff' + csv, 'text/csv;charset=utf-8');
   });
 
   // Synchronisation manuelle (bouton ↻ de l'en-tête)
@@ -342,11 +480,6 @@ function bind() {
     await refresh();
     b.classList.remove('spin');
     if ($('st').hidden) toast('Synchronisé');
-  });
-  $('meals').addEventListener('click', async (e) => {
-    const b = e.target.closest('[data-del]'); if (!b) return;
-    if (demo) { toast('Exemple : ajoute ton premier repas pour commencer'); return; }
-    await act(() => store.deleteMeal(T, b.dataset.del));
   });
 
   // Textes enregistrés automatiquement
