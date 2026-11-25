@@ -162,7 +162,33 @@
 
   <div class="lbl">
     <h2><span class="e" aria-hidden="true">🎯</span> Mes objectifs</h2>
-    <form class="form" id="objForm">
+    <div class="seg two" role="radiogroup" aria-label="Comment fixer tes objectifs">
+      <label><input type="radio" name="omode" value="auto"><span class="e" aria-hidden="true">🧮</span>Calcul automatique</label>
+      <label><input type="radio" name="omode" value="manuel"><span class="e" aria-hidden="true">✍️</span>À la main</label>
+    </div>
+
+    <form id="calcForm" hidden>
+      <p class="lab">Toi</p>
+      <div class="seg two" role="radiogroup" aria-label="Sexe">
+        <label><input type="radio" name="sexe" value="f"><span class="e" aria-hidden="true">👩</span>Femme</label>
+        <label><input type="radio" name="sexe" value="h"><span class="e" aria-hidden="true">👨</span>Homme</label>
+      </div>
+      <div class="form">
+        <label>Année de naissance<input id="pN" inputmode="numeric" placeholder="1990" maxlength="4"></label>
+        <label>Taille (cm)<input id="pT" inputmode="numeric" placeholder="175" maxlength="3"></label>
+        <label>Poids actuel (kg)<input id="pP" inputmode="decimal" placeholder="80"></label>
+        <label>Poids visé (kg)<input id="pC" inputmode="decimal" placeholder="72"></label>
+      </div>
+      <p class="small" id="pPnote"></p>
+      <p class="lab">Ton activité au quotidien</p>
+      <div class="choix" id="actList" role="radiogroup" aria-label="Activité"></div>
+      <p class="lab">À quel rythme ?</p>
+      <div class="seg" id="rytList" role="radiogroup" aria-label="Rythme de perte"></div>
+      <div class="calc" id="calcOut" aria-live="polite"></div>
+      <div class="form"><label>Pas / jour<input id="aS" inputmode="numeric"></label><label>&nbsp;<button class="primary" id="calcSave">Enregistrer</button></label></div>
+    </form>
+
+    <form class="form" id="objForm" hidden>
       <label>Calories / jour<input id="oK" inputmode="numeric"></label>
       <label>Protéines (g)<input id="oP" inputmode="numeric"></label>
       <label>Glucides (g)<input id="oG" inputmode="numeric"></label>

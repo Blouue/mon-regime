@@ -27,6 +27,22 @@ h1{font-size:27px;line-height:1.1;margin:0;font-weight:850;letter-spacing:-.01em
 .hbtns{display:flex;gap:8px;flex:none}
 button.sync .e{font-size:18px}
 .seg:has(input[name=theme]){grid-template-columns:repeat(3,1fr)}
+.seg.two{grid-template-columns:repeat(2,1fr)}
+#rytList{grid-template-columns:repeat(3,1fr)}
+.lab{font-size:13px;font-weight:800;color:var(--mute);margin:14px 0 6px;text-transform:uppercase;letter-spacing:.03em}
+.choix{display:grid;gap:6px}
+.choix label{position:relative;display:grid;grid-template-columns:2.2em minmax(0,1fr);gap:0 10px;align-items:center;padding:9px 12px;border-radius:14px;background:var(--soft);cursor:pointer}
+.choix label .e{grid-row:1/span 2;font-size:22px;text-align:center}
+.choix label b{font-size:15px}.choix label span.small{grid-column:2}
+.choix input{position:absolute;opacity:0;inset:0;margin:0;cursor:pointer}
+.choix label:has(input:checked){background:var(--tom-t);box-shadow:inset 0 0 0 2px var(--tom)}
+.choix label:has(input:focus-visible){outline:3px solid var(--tom);outline-offset:2px}
+.sugg{font-size:11px;font-weight:800;color:var(--herb);background:var(--herb-t);padding:1px 7px;border-radius:99px;margin-left:6px;vertical-align:middle}
+.seg label .small{font-weight:600;font-size:11px}
+.calc{margin:16px 0 6px}.calc:empty{display:none}
+.calc .tiles{margin:0 0 10px}
+.calc .chips{justify-content:center}
+.alerte{background:var(--sun-t);border-radius:14px;padding:9px 12px;font-size:14px;margin:8px 0}
 button.sync{min-height:40px;width:40px;padding:0;background:var(--card);color:var(--mute);border:0;border-radius:50%;box-shadow:0 2px 10px var(--shadow);flex:none}
 button.sync svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2.4;stroke-linecap:round}
 button.sync.spin svg{animation:spin .8s linear infinite}

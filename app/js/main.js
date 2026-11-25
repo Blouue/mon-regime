@@ -2,8 +2,9 @@ import { store, empty } from './store.js';
 import { configured, currentUser, onAuth, handleRedirect, sendMagicLink, verifyCode, signOut, functionUrl } from './supabase.js';
 import { num, parseSanteText, normalize } from './parse.js';
 import { lineChart, barChart } from './charts.js';
+import { ACTIVITES, RYTHMES, activiteDepuisPas, profilComplet, calculer } from './calcul.js';
 
-const VERSION = '1.4.0';
+const VERSION = '1.5.0';
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const pad = (n) => String(n).padStart(2, '0');
@@ -83,6 +84,7 @@ async function refresh() {
     }
   }
   applyReal(); renderAccount();
+  await recalcAuto();
 }
 
 /** La ligne d'état ne s'affiche que lorsqu'il y a quelque chose à signaler. */
@@ -224,11 +226,93 @@ function renderShop() {
   if (document.activeElement !== $('placard')) $('placard').value = real.placard || '';
 }
 
+/* ---------- Objectifs : à la main ou calcul automatique ---------- */
+const virgule = (v) => (v != null ? String(v).replace('.', ',') : '');
+const coche = (name, value) => { const r = document.querySelector(`input[name=${name}][value="${value}"]`); if (r) r.checked = true; };
+const choisi = (name) => document.querySelector(`input[name=${name}]:checked`)?.value;
+let objRempli = '';
+
+/** Moyenne de pas des 7 derniers jours (données réelles uniquement). */
+function moyennePas() {
+  if (demo) return null;
+  const v = []; for (let i = 0; i < 7; i++) { const x = S.days[iso(addD(TODAY, -i))]; if (x?.pas != null) v.push(x.pas); }
+  return v.length >= 3 ? v.reduce((a, b) => a + b, 0) / v.length : null;
+}
+
 function renderObj() {
-  const o = S.obj;
-  [['oK', 'kcal'], ['oP', 'prot'], ['oG', 'gluc'], ['oL', 'lip'], ['oS', 'pas'], ['oW', 'poidsCible']].forEach(([id, f]) => {
-    if (document.activeElement !== $(id)) $(id).value = o[f] != null ? String(o[f]).replace('.', ',') : '';
-  });
+  // Tant qu'aucun profil n'est rempli, on propose d'abord le calcul automatique.
+  const o = S.obj, mode = o.mode === 'auto' || !o.sexe ? 'auto' : 'manuel';
+  // On ne remplit le formulaire que si les données ont changé, pour ne pas effacer une saisie en cours.
+  const lw = lastWeight(T), cle = JSON.stringify([o, lw]);
+  if (cle !== objRempli) {
+    objRempli = cle;
+    coche('omode', mode);
+    [['oK', 'kcal'], ['oP', 'prot'], ['oG', 'gluc'], ['oL', 'lip'], ['oS', 'pas'], ['oW', 'poidsCible'], ['aS', 'pas'], ['pN', 'naissance'], ['pT', 'taille'], ['pC', 'poidsCible']]
+      .forEach(([id, f]) => { if (document.activeElement !== $(id)) $(id).value = virgule(o[f]); });
+    if (o.sexe) coche('sexe', o.sexe);
+    const sugg = activiteDepuisPas(moyennePas());
+    document.querySelectorAll('[data-sugg]').forEach((s) => { s.hidden = +s.dataset.sugg !== sugg; });
+    coche('act', o.activite || sugg || 1.375);
+    coche('ryt', o.rythme ?? 0.5);
+    if (document.activeElement !== $('pP')) $('pP').value = lw ? virgule(lw.v) : '';
+    $('pPnote').textContent = lw && !demo ? `Poids actuel d'après ta pesée ${lw.d === T ? "d'aujourd'hui" : 'du ' + frDate(lw.d, { day: 'numeric', month: 'long' })}. Ton objectif se recalcule à chaque nouvelle pesée.` : '';
+  }
+  montrerMode();
+}
+function montrerMode() {
+  const auto = choisi('omode') === 'auto';
+  $('calcForm').hidden = !auto; $('objForm').hidden = auto;
+  if (auto) renderCalc();
+}
+
+function lireProfil() {
+  const entier = (id) => { const n = num($(id).value); return n ? Math.round(n) : null; };
+  const r = choisi('ryt');
+  return { sexe: choisi('sexe'), naissance: entier('pN'), taille: entier('pT'), poids: num($('pP').value), poidsCible: num($('pC').value), activite: +choisi('act') || null, rythme: r != null ? +r : null };
+}
+/** Message d'erreur si une valeur est hors des bornes raisonnables, sinon ''. */
+function verifierProfil(p) {
+  const an = new Date().getFullYear();
+  if (p.naissance && (p.naissance < 1900 || p.naissance > an - 14)) return "L'année de naissance semble incorrecte.";
+  if (p.taille && (p.taille < 120 || p.taille > 230)) return 'La taille se donne en centimètres, par exemple 175.';
+  if (p.poids && (p.poids < 30 || p.poids > 300)) return 'Le poids actuel semble incorrect.';
+  if (p.poidsCible && (p.poidsCible < 30 || p.poidsCible > 300)) return 'Le poids visé semble incorrect.';
+  return '';
+}
+
+function renderCalc() {
+  const p = lireProfil(), err = verifierProfil(p);
+  if (err) { $('calcOut').innerHTML = `<p class="alerte">✋ ${esc(err)}</p>`; return; }
+  if (!profilComplet(p)) { $('calcOut').innerHTML = '<p class="empty"><span class="e" aria-hidden="true">✨</span>Remplis tout pour découvrir ton objectif.</p>'; return; }
+  const r = calculer(p);
+  const quand = r.fin ? 'vers ' + r.fin.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }) : r.aPerdre > 0 ? '–' : 'Déjà atteint 🎉';
+  let h = `<div class="tiles">
+    <div class="tile tom"><div class="t-h"><span class="e" aria-hidden="true">🔥</span> Par jour</div><div class="v">${fr.format(r.kcal)} <span class="unit">kcal</span></div></div>
+    <div class="tile grape"><div class="t-h"><span class="e" aria-hidden="true">📅</span> Poids visé</div><div class="v" style="font-size:20px">${esc(quand)}</div><div class="small">${r.semaines ? '≈ ' + Math.round(r.semaines) + ' semaines' : ''}</div></div>
+  </div>
+  <div class="chips"><span>🥩 ${r.prot} g protéines</span><span>🍞 ${r.gluc} g glucides</span><span>🥑 ${r.lip} g lipides</span></div>`;
+  if (r.limite) h += `<p class="alerte">⚠️ Pour rester en forme, on ne descend pas sous ${fr.format(p.sexe === 'h' ? 1500 : 1200)} kcal par jour : tu perdras plutôt ${fr1.format(r.kgSemaine)} kg par semaine.</p>`;
+  if (r.imcCibleBas) h += `<p class="alerte">⚠️ Ce poids visé correspond à un IMC de ${fr1.format(r.imcCible)}, sous le seuil de 18,5. Mieux vaut en parler à un médecin.</p>`;
+  h += `<p class="small">Tu dépenses environ ${fr.format(r.tdee)} kcal par jour (dont ${fr.format(r.bmr)} au repos). ${r.aPerdre > 0 ? `Rythme prévu : −${fr1.format(r.kgSemaine)} kg par semaine.` : "C'est un objectif d'entretien."} Estimation selon la formule de Mifflin-St Jeor, pas un avis médical.</p>`;
+  $('calcOut').innerHTML = h;
+}
+
+/** En mode automatique, réajuste l'objectif quand le poids change (les besoins baissent avec le poids). */
+async function recalcAuto() {
+  const o = real.obj;
+  if (demo || store.mode === 'signed-out' || o?.mode !== 'auto' || recalcAuto.enCours) return;
+  const lw = lastWeight(T);
+  if (!lw || !profilComplet({ ...o, poids: lw.v })) return;
+  const r = calculer({ ...o, poids: lw.v });
+  if (Math.abs(r.kcal - (o.kcal || 0)) < 20 && Math.abs(r.prot - (o.prot || 0)) < 5) return;
+  recalcAuto.enCours = true;
+  try {
+    const n = { ...DEF_OBJ, ...o, kcal: r.kcal, prot: r.prot, gluc: r.gluc, lip: r.lip };
+    await store.saveObj(n);
+    real.obj = n; S.obj = { ...DEF_OBJ, ...n }; render();
+    toast(`🎯 Objectif ajusté à ta pesée : ${fr.format(r.kcal)} kcal par jour`);
+  } catch { /* on réessaiera à la prochaine synchronisation */ }
+  recalcAuto.enCours = false;
 }
 
 function renderAccount() {
@@ -370,7 +454,28 @@ function bind() {
   $('objForm').addEventListener('submit', async (e) => {
     e.preventDefault(); const o = {};
     [['oK', 'kcal'], ['oP', 'prot'], ['oG', 'gluc'], ['oL', 'lip'], ['oS', 'pas'], ['oW', 'poidsCible']].forEach(([id, f]) => { const n = num($(id).value); if (n != null && n > 0) o[f] = f === 'poidsCible' ? Math.round(n * 10) / 10 : Math.round(n); });
-    await act(() => store.saveObj({ ...DEF_OBJ, ...real.obj, ...o }), 'Objectifs enregistrés');
+    await act(() => store.saveObj({ ...DEF_OBJ, ...real.obj, ...o, mode: 'manuel' }), '🎯 Objectifs enregistrés');
+  });
+
+  // Calcul automatique : listes de choix, aperçu en direct, enregistrement
+  $('actList').innerHTML = ACTIVITES.map((a) => `<label><input type="radio" name="act" value="${a.v}"><span class="e" aria-hidden="true">${a.e}</span><b>${a.nom}<span class="sugg" data-sugg="${a.v}" hidden>d'après tes pas</span></b><span class="small">${a.aide}</span></label>`).join('');
+  $('rytList').innerHTML = RYTHMES.map((r) => `<label><input type="radio" name="ryt" value="${r.v}"><span class="e" aria-hidden="true">${r.e}</span>${r.nom}<span class="small">${r.aide}</span></label>`).join('');
+  document.querySelectorAll('input[name=omode]').forEach((i) => i.addEventListener('change', montrerMode));
+  $('calcForm').addEventListener('input', renderCalc);
+  $('calcForm').addEventListener('change', renderCalc);
+  $('calcForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const p = lireProfil(), err = verifierProfil(p);
+    if (err) { toast(err); return; }
+    if (!profilComplet(p)) { toast('Il manque une information pour faire le calcul'); return; }
+    const r = calculer(p), pas = Math.round(num($('aS').value) || real.obj?.pas || DEF_OBJ.pas);
+    const o = { ...DEF_OBJ, ...real.obj, mode: 'auto', sexe: p.sexe, naissance: p.naissance, taille: p.taille, activite: p.activite, rythme: p.rythme,
+      poidsCible: Math.round(p.poidsCible * 10) / 10, kcal: r.kcal, prot: r.prot, gluc: r.gluc, lip: r.lip, pas };
+    const lw = lastWeight(T), poids = Math.round(p.poids * 10) / 10;
+    // Un poids actuel saisi ici, différent de la dernière pesée, devient la pesée du jour.
+    const pesee = (!lw || demo || Math.abs(lw.v - poids) >= 0.1) && !(S.days[T]?.poids === poids);
+    await act(async () => { await store.saveObj(o); if (pesee) await store.saveDay(T, { poids }, 'manuel'); },
+      `🎯 C'est parti : ${fr.format(r.kcal)} kcal par jour`);
   });
 
   // Recette

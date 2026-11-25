@@ -57,8 +57,10 @@ const remote = {
     r.ingr = ingr[0]?.liste ?? null;
     if (obj[0]) {
       const o = obj[0];
-      r.obj = Object.fromEntries(Object.entries({ kcal: o.kcal, prot: o.prot, gluc: o.gluc, lip: o.lip, pas: o.pas, poidsCible: o.poids_cible })
+      r.obj = Object.fromEntries(Object.entries({ kcal: o.kcal, prot: o.prot, gluc: o.gluc, lip: o.lip, pas: o.pas, poidsCible: o.poids_cible, naissance: o.naissance, taille: o.taille, activite: o.activite, rythme: o.rythme })
         .filter(([, v]) => v != null).map(([k, v]) => [k, +v]));
+      if (o.sexe) r.obj.sexe = o.sexe;
+      r.obj.mode = o.mode || 'manuel';
     }
     r.jeton = jeton[0] || null;
     return r;
@@ -83,7 +85,10 @@ const remote = {
   saveText(table, texte) { return rest.upsert(table, { user_id: uid(), texte }, 'user_id'); },
   saveIngr(liste) { return rest.upsert('ingredients', { user_id: uid(), liste }, 'user_id'); },
   saveObj(o) {
-    return rest.upsert('objectifs', { user_id: uid(), kcal: o.kcal, prot: o.prot, gluc: o.gluc, lip: o.lip, pas: o.pas, poids_cible: o.poidsCible }, 'user_id');
+    return rest.upsert('objectifs', {
+      user_id: uid(), kcal: o.kcal, prot: o.prot, gluc: o.gluc, lip: o.lip, pas: o.pas, poids_cible: o.poidsCible,
+      mode: o.mode || 'manuel', sexe: o.sexe ?? null, naissance: o.naissance ?? null, taille: o.taille ?? null, activite: o.activite ?? null, rythme: o.rythme ?? null,
+    }, 'user_id');
   },
   /** Crée un nouveau jeton pour le raccourci. Seule son empreinte est stockée : il ne s'affiche qu'une fois. */
   async newJeton() {
