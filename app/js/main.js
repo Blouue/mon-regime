@@ -3,7 +3,7 @@ import { configured, currentUser, onAuth, handleRedirect, sendMagicLink, verifyC
 import { num, parseSanteText, normalize } from './parse.js';
 import { lineChart, barChart } from './charts.js';
 
-const VERSION = '1.1.2';
+const VERSION = '1.4.0';
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const pad = (n) => String(n).padStart(2, '0');
@@ -19,6 +19,16 @@ let TODAY = new Date(); let T = iso(TODAY);
 const DEF_OBJ = { kcal: 1800, prot: 110, gluc: 180, lip: 60, pas: 8000, poidsCible: 74 };
 const DEF_INGR = ['filet de poulet', 'escalope de dinde', 'cabillaud', 'pavé de saumon', 'oeufs', 'skyr', 'fromage blanc 0%', 'lentilles', 'pois chiches', 'riz basmati', 'pâtes complètes', "flocons d'avoine", 'brocoli', 'courgette', 'haricots verts surgelés', 'épinards surgelés', 'carotte', 'tomate', 'pomme', 'banane'];
 const safeUrl = (u) => (/^https:\/\//i.test(u || '') ? u : '');
+/** https://jow.fr/recipes/poulet-curry-coco-4fd5a2b1 → « Poulet curry coco » */
+function nomDepuisJow(u) {
+  try {
+    const url = new URL(u);
+    if (!/(^|\.)jow\.fr$/i.test(url.hostname)) return '';
+    let s = decodeURIComponent(url.pathname.split('/').filter(Boolean).pop() || '');
+    s = s.replace(/-[a-z0-9]{6,}$/i, (m) => (/\d/.test(m) ? '' : m)).replace(/[-_]+/g, ' ').trim();
+    return s && s !== 'recipes' ? s[0].toUpperCase() + s.slice(1) : '';
+  } catch { return ''; }
+}
 const toast = (m) => { const t = $('toast'); t.textContent = m; t.classList.add('on'); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove('on'), 2600); };
 
 /* ---------- Données d'exemple ---------- */
@@ -67,47 +77,94 @@ async function refresh() {
   } catch (e) {
     if (e.code === 'offline') {
       const c = store.cached(); if (c) real = c;
-      $('st').textContent = 'Hors ligne : affichage des dernières données reçues.';
+      showStatus('Hors ligne : affichage des dernières données reçues.');
     } else if (e.code !== 'not_signed_in') {
-      $('st').textContent = 'Synchronisation impossible : ' + e.message;
+      showStatus('Synchronisation impossible : ' + e.message);
     }
   }
   applyReal(); renderAccount();
 }
 
+/** La ligne d'état ne s'affiche que lorsqu'il y a quelque chose à signaler. */
+function showStatus(t) { $('st').textContent = t || ''; $('st').hidden = !t; }
 function setStatus() {
   const m = store.mode;
-  $('st').textContent = m === 'local' ? 'Mode local : tes données restent sur cet appareil.'
+  showStatus(m === 'local' ? 'Mode local : tes données restent sur cet appareil.'
     : m === 'signed-out' ? "Connecte-toi dans l'onglet Connexion pour enregistrer et synchroniser. En attendant, voici l'exemple."
-    : 'Synchronisé à ' + lastSync.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) + '.';
+    : '');
+  $('syncBtn').hidden = m !== 'remote';
+}
+
+/** « Dernier envoi aujourd'hui à 21:31 · raccourci iPhone » sous le bilan du jour. */
+function renderFresh() {
+  const el = $('fresh');
+  const ks = demo ? [] : Object.keys(S.days).filter((k) => S.days[k]._maj).sort((a, b) => (S.days[a]._maj < S.days[b]._maj ? -1 : 1));
+  if (!ks.length) { el.textContent = ''; return; }
+  const x = S.days[ks.at(-1)], t = new Date(x._maj), ti = iso(t);
+  const quand = ti === T ? "aujourd'hui" : ti === iso(addD(TODAY, -1)) ? 'hier' : 'le ' + t.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
+  const src = { raccourci: 'raccourci iPhone', manuel: 'saisie à la main', collage: 'texte collé' }[x._src];
+  el.textContent = `Dernier envoi ${quand} à ${t.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` + (src ? ' · ' + src : '');
+  el.classList.toggle('old', Date.now() - t > 36 * 3600e3);
 }
 
 /* ---------- Rendu : Aujourd'hui ---------- */
 function lastWeight(beforeOrOn) { const ks = Object.keys(S.days).filter((k) => k <= beforeOrOn && S.days[k].poids).sort(); return ks.length ? { d: ks.at(-1), v: S.days[ks.at(-1)].poids } : null; }
 function renderToday() {
   $('today').textContent = TODAY.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
-  const d = S.days[T] || {}, o = S.obj, k = d.kcal || 0, left = o.kcal - k;
-  $('left').textContent = d.kcal == null ? '–' : fr.format(left);
-  $('left').style.color = left < 0 && d.kcal != null ? 'var(--tom)' : '';
-  $('kcalLine').textContent = d.kcal == null ? "Pas encore de données aujourd'hui" : `${fr.format(k)} mangées sur ${fr.format(o.kcal)} kcal`;
-  $('kcalBar').style.width = Math.min(100, k / o.kcal * 100) + '%'; $('kcalBar').className = k > o.kcal ? 'over' : '';
-  $('kcalPct').textContent = d.kcal == null ? '' : Math.round(k / o.kcal * 100) + " % de l'objectif";
+  const d = S.days[T] || {}, o = S.obj, k = d.kcal || 0, left = o.kcal - k, has = d.kcal != null;
+  // Anneau : vert, puis jaune à l'approche de l'objectif, tomate au-delà.
+  const pct = k / o.kcal, C = 326.73;
+  $('ringVal').setAttribute('stroke-dashoffset', String(C * (1 - Math.min(1, has ? pct : 0))));
+  $('ringVal').classList.toggle('near', pct > 0.9 && pct <= 1);
+  $('ringVal').classList.toggle('over', pct > 1);
+  $('left').textContent = has ? fr.format(Math.abs(left)) : '–';
+  $('leftLbl').textContent = has && left < 0 ? 'kcal en trop' : 'kcal restantes';
+  $('eaten').textContent = has ? fr.format(k) : '–';
+  $('goal').textContent = fr.format(o.kcal);
   const lw = lastWeight(T);
   $('wt').innerHTML = lw ? esc(fr1.format(lw.v)) + ' <span class="unit">kg</span>' : '–';
   const prev = lw && lastWeight(iso(addD(fromIso(lw.d), -7)));
-  $('wtD').textContent = lw ? (prev ? `${lw.v - prev.v <= 0 ? '' : '+'}${fr1.format(lw.v - prev.v)} kg en 7 jours` : '') + (lw.d !== T ? ' · pesée du ' + frDate(lw.d, { day: 'numeric', month: 'short' }) : '') : '';
+  const dw = lw && prev ? lw.v - prev.v : null;
+  $('wtD').innerHTML = lw ? (dw != null ? `<span class="${dw <= 0 ? 'good' : 'bad'}">${dw <= 0 ? '↓' : '↑'} ${esc(fr1.format(Math.abs(dw)))} kg</span> en 7 jours` : '') + (lw.d !== T ? (dw != null ? '<br>' : '') + 'pesée du ' + esc(frDate(lw.d, { day: 'numeric', month: 'short' })) : '') : 'Pas encore de pesée';
   $('steps').textContent = d.pas == null ? '–' : fr.format(d.pas);
-  $('stepBar').style.width = Math.min(100, (d.pas || 0) / o.pas * 100) + '%'; $('stepGoal').textContent = 'Objectif ' + fr.format(o.pas);
-  const M = [['Protéines', 'prot', o.prot], ['Glucides', 'gluc', o.gluc], ['Lipides', 'lip', o.lip]];
-  $('macros').innerHTML = M.map(([n, f, g]) => { const v = d[f] || 0; return `<div class="macro"><span>${n}</span><div class="meter"><i class="${v > g * 1.1 ? 'over' : ''}" style="width:${Math.min(100, v / g * 100)}%"></i></div><b>${esc(fr.format(v))} / ${fr.format(g)} g</b></div>`; }).join('');
+  $('stepBar').style.width = Math.min(100, (d.pas || 0) / o.pas * 100) + '%';
+  $('stepGoal').textContent = (d.pas || 0) >= o.pas ? 'Objectif atteint 🎉' : 'Objectif ' + fr.format(o.pas);
+  renderCheer(d, o, dw);
+  renderFresh();
+  // Macros : masquées tant qu'aucune n'a été reçue ces 14 derniers jours (le raccourci peut ne pas les envoyer).
+  const depuis = iso(addD(TODAY, -14));
+  $('macroBox').hidden = !demo && !Object.keys(S.days).some((k) => k >= depuis && ['prot', 'gluc', 'lip'].some((f) => S.days[k][f] != null));
+  const M = [['🥩 Protéines', 'prot', o.prot], ['🍞 Glucides', 'gluc', o.gluc], ['🥑 Lipides', 'lip', o.lip]];
+  $('macros').innerHTML = M.map(([n, f, g]) => { const v = d[f] || 0; return `<div class="macro ${f}"><span>${n}</span><div class="meter"><i style="width:${Math.min(100, v / g * 100)}%"></i></div><b>${esc(fr.format(v))} / ${fr.format(g)} g</b></div>`; }).join('');
   const di = (TODAY.getDay() + 6) % 7, r = (S.menu[iso(monday(TODAY))] || {})[di];
   $('tonight').innerHTML = r && r.nom
     ? `<div><div class="n">${esc(r.nom)}</div><div class="small">${JOURS[di]} soir</div>${r.recette ? `<details><summary>Voir la recette</summary>${recHtml(r.recette)}</details>` : ''}</div>${safeUrl(r.lien) ? `<a class="btn tom" href="${esc(safeUrl(r.lien))}" target="_blank" rel="noopener noreferrer">Ouvrir dans Jow</a>` : ''}`
-    : `<div><div class="n">Rien de prévu</div><div class="small">Ajoute ta recette dans l'onglet Repas Jow.</div></div><a class="btn ghost" href="#repas">Planifier</a>`;
+    : `<div><div class="n">Rien de prévu 🤔</div><div class="small">Choisis une recette dans l'onglet Repas Jow.</div></div><a class="btn ghost" href="#repas">Planifier</a>`;
   const rep = d.repas || [];
   $('meals').innerHTML = rep.length
-    ? rep.map((m) => `<div class="meal"><span class="tag">${esc(m.m)}</span><span>${esc(m.nom)}</span><span class="k">${m.kcal != null && m.kcal !== '' ? esc(fr.format(m.kcal)) + ' kcal' : ''}</span><button class="x" data-del="${esc(m.id)}" aria-label="Supprimer ${esc(m.nom)}">×</button></div>`).join('')
-    : "<p class=\"small\">Aucun repas noté aujourd'hui.</p>";
+    ? rep.map((m) => `<div class="meal"><span class="mo ${esc(m.m)}" title="${esc(m.m)}" aria-label="${esc(m.m)}">${MOMENTS[m.m] || '🍴'}</span><span>${esc(m.nom)}</span><span>${m.kcal != null && m.kcal !== '' ? '<span class="k">' + esc(fr.format(m.kcal)) + ' kcal</span>' : ''}</span><button class="x" data-del="${esc(m.id)}" aria-label="Supprimer ${esc(m.nom)}">×</button></div>`).join('')
+    : '<p class="empty"><span class="e" aria-hidden="true">🍽️</span>Rien de noté pour l\'instant.</p>';
+}
+
+const MOMENTS = { Matin: '☀️', Midi: '🥗', Goûter: '🍎', Soir: '🌙' };
+
+/** Un petit mot d'encouragement, jamais culpabilisant. */
+function renderCheer(d, o, dw) {
+  const el = $('cheer'), h = new Date().getHours(), k = d.kcal;
+  let t = '', cls = '';
+  if (k == null) {
+    t = h < 21 ? '🌅 Nouvelle journée ! Tes chiffres arriveront ce soir avec le raccourci.' : '📲 Le raccourci du soir ne devrait plus tarder.';
+    cls = 'soft';
+  } else if (k > o.kcal) {
+    t = '🫶 Un peu au-dessus aujourd\'hui, pas de souci : demain est un autre jour.'; cls = 'warm';
+  } else if (k >= o.kcal * 0.85) {
+    t = '🎯 Pile dans ton objectif, bravo !';
+  } else {
+    t = `💪 Encore ${fr.format(o.kcal - k)} kcal à savourer aujourd'hui.`;
+  }
+  if ((d.pas || 0) >= o.pas) t += ' 👟 Et ton objectif de pas est atteint !';
+  else if (dw != null && dw < 0) t += ` 🌱 −${fr1.format(-dw)} kg en 7 jours, continue comme ça !`;
+  el.textContent = t; el.className = 'cheer ' + cls;
 }
 
 /* ---------- Rendu : Évolution ---------- */
@@ -120,17 +177,17 @@ function renderEvo() {
   $('wtSum').textContent = ws.length > 1 ? `${fr1.format(ws[0].v)} → ${fr1.format(ws.at(-1).v)} kg, soit ${ws.at(-1).v - ws[0].v <= 0 ? '' : '+'}${fr1.format(ws.at(-1).v - ws[0].v)} kg sur la période.` : '';
   const k = p7k.filter((p) => p.v != null), s = p7s.filter((p) => p.v != null);
   const avg = (a) => (a.length ? Math.round(a.reduce((t, p) => t + p.v, 0) / a.length) : null);
-  const inGoal = k.filter((p) => p.v <= o.kcal).length, stepOk = s.filter((p) => p.v >= o.pas).length;
+  const inGoal = k.filter((p) => p.v <= o.kcal).length;
   const lw = lastWeight(T), pw = lw && lastWeight(iso(addD(TODAY, -7)));
-  const rows = [
-    ['Calories moyennes', avg(k) != null ? fr.format(avg(k)) + ' kcal' : '–'],
-    ["Jours dans l'objectif calories", k.length ? `${inGoal} / ${k.length}` : '–'],
-    ['Pas moyens', avg(s) != null ? fr.format(avg(s)) : '–'],
-    ['Jours à ' + fr.format(o.pas) + ' pas ou plus', s.length ? `${stepOk} / ${s.length}` : '–'],
-    ['Poids sur 7 jours', lw && pw ? `${lw.v - pw.v <= 0 ? '' : '+'}${fr1.format(lw.v - pw.v)} kg` : '–'],
+  // Le bilan de la semaine en quatre tuiles, du plus parlant au plus détaillé.
+  const reste = lw && o.poidsCible ? lw.v - o.poidsCible : null;
+  const tiles = [
+    ['sky', '⚖️', 'Cette semaine', lw && pw ? `${lw.v - pw.v <= 0 ? '−' : '+'}${fr1.format(Math.abs(lw.v - pw.v))} kg` : '–'],
+    ['grape', '🏁', 'Avant ton objectif', reste == null ? '–' : reste > 0 ? fr1.format(reste) + ' kg' : 'Atteint 🎉'],
+    ['tom', '🔥', 'Jours dans l\'objectif', k.length ? `${inGoal} / ${k.length}` : '–'],
+    ['herb', '👟', 'Pas par jour', avg(s) != null ? fr.format(avg(s)) : '–'],
   ];
-  if (lw && o.poidsCible) rows.push(["Reste jusqu'au poids visé", lw.v - o.poidsCible > 0 ? fr1.format(lw.v - o.poidsCible) + ' kg' : 'Atteint']);
-  $('bilan').innerHTML = rows.map(([a, b]) => `<div class="row"><span>${a}</span><b>${esc(b)}</b></div>`).join('');
+  $('bilan').innerHTML = tiles.map(([c, e, l, v]) => `<div class="tile ${c}"><div class="t-h"><span class="e" aria-hidden="true">${e}</span> ${l}</div><div class="v">${esc(v)}</div></div>`).join('');
 }
 
 /* ---------- Rendu : Repas ---------- */
@@ -141,7 +198,13 @@ function renderMenu() {
   $('wLbl').textContent = wOff === 0 ? 'Cette semaine' : 'Semaine du ' + m.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
   // Ne pas réécrire les champs pendant la saisie.
   if (!($('menu').contains(document.activeElement) && menuKeyShown === key)) {
-    $('menu').innerHTML = JOURS.map((j, i) => { const d = addD(m, i), r = wk[i] || {}; return `<div class="day${iso(d) === T ? ' today' : ''}"><div class="d">${j} <span class="small">${d.getDate()}</span></div><div class="f"><input data-i="${i}" data-f="nom" value="${esc(r.nom)}" placeholder="Recette Jow" aria-label="Recette ${j}" maxlength="300"><input data-i="${i}" data-f="lien" value="${esc(r.lien)}" placeholder="https://jow.fr/…" inputmode="url" aria-label="Lien ${j}"></div></div>`; }).join('');
+    $('menu').innerHTML = JOURS.map((j, i) => {
+      const d = addD(m, i), r = wk[i] || {}, u = safeUrl(r.lien);
+      return `<div class="day${iso(d) === T ? ' today' : ''}"><div class="d">${j} <span class="small">${d.getDate()}</span></div><div class="f">`
+        + `<input data-i="${i}" data-f="nom" value="${esc(r.nom)}" placeholder="Recette" aria-label="Recette ${j}" maxlength="300">`
+        + `<a class="go" data-go="${i}" href="${esc(u)}" target="_blank" rel="noopener noreferrer" aria-label="Ouvrir la recette de ${j} dans Jow"${u ? '' : ' hidden'}>↗</a>`
+        + `<input data-i="${i}" data-f="lien" value="${esc(r.lien)}" placeholder="Lien Jow (facultatif)" inputmode="url" aria-label="Lien Jow ${j}"></div></div>`;
+    }).join('');
     menuKeyShown = key;
   }
   if (document.activeElement !== $('notes')) $('notes').value = S.notes || '';
@@ -179,6 +242,8 @@ function renderAccount() {
     const j = real.jeton;
     $('jetonSt').textContent = j ? `Jeton créé le ${frDate(j.cree_le.slice(0, 10))}` + (j.dernier_usage ? ` · dernier envoi le ${new Date(j.dernier_usage).toLocaleString('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}` : ' · pas encore utilisé') : 'Aucun jeton pour le moment.';
     $('jetonBtn').textContent = j ? 'Créer un nouveau jeton' : 'Créer un jeton';
+    // Guide du raccourci déplié tant qu'aucun jeton n'existe ; ensuite on laisse l'utilisateur choisir.
+    if (!renderAccount.plie && lastSync) { $('shortcutBox').open = !j; renderAccount.plie = true; }
   }
 }
 
@@ -186,11 +251,13 @@ function render() { renderToday(); renderEvo(); renderMenu(); renderShop(); rend
 
 /* ---------- Navigation ---------- */
 const TITLES = { aujourdhui: "Aujourd'hui", evolution: 'Évolution', repas: 'Repas Jow', connexion: 'Connexion' };
+/** Sur l'onglet du jour, le titre devient une salutation selon l'heure. */
+const salut = () => { const h = new Date().getHours(); return h < 5 ? 'Bonne nuit 🌙' : h < 12 ? 'Bonjour ☀️' : h < 18 ? 'Bon après-midi 👋' : 'Bonsoir 🌙'; };
 function route() {
   const v = TITLES[location.hash.slice(1)] ? location.hash.slice(1) : 'aujourdhui';
   document.querySelectorAll('section[data-v]').forEach((s) => s.classList.toggle('on', s.dataset.v === v));
   document.querySelectorAll('nav.tabs a').forEach((a) => { a.classList.toggle('on', a.dataset.t === v); a.toggleAttribute('aria-current', a.dataset.t === v); });
-  $('ttl').textContent = TITLES[v]; document.title = TITLES[v] + ' · Mon régime';
+  $('ttl').textContent = v === 'aujourdhui' ? salut() : TITLES[v]; document.title = TITLES[v] + ' · Mon régime';
   if (v === 'evolution') requestAnimationFrame(renderEvo);
   window.scrollTo(0, 0);
 }
@@ -225,10 +292,23 @@ function bind() {
   });
 
   // Repas du jour
+  // Moment présélectionné selon l'heure : matin avant 10 h, midi avant 15 h, goûter avant 18 h, soir ensuite.
+  const h = new Date().getHours();
+  const momDef = h < 10 ? 'Matin' : h < 15 ? 'Midi' : h < 18 ? 'Goûter' : 'Soir';
+  document.querySelector(`input[name=mom][value="${momDef}"]`).checked = true;
   $('mealForm').addEventListener('submit', async (e) => {
     e.preventDefault(); const nom = $('mN').value.trim(); if (!nom) return;
-    const kcal = num($('mK').value);
-    if (await act(() => store.addMeal(T, { m: $('mM').value, nom, kcal: kcal == null ? null : Math.round(kcal) }))) { $('mN').value = ''; $('mK').value = ''; }
+    const kcal = num($('mK').value), m = document.querySelector('input[name=mom]:checked')?.value || momDef;
+    if (await act(() => store.addMeal(T, { m, nom, kcal: kcal == null ? null : Math.round(kcal) }))) { $('mN').value = ''; $('mK').value = ''; }
+  });
+
+  // Synchronisation manuelle (bouton ↻ de l'en-tête)
+  $('syncBtn').addEventListener('click', async () => {
+    const b = $('syncBtn'); if (b.classList.contains('spin')) return;
+    b.classList.add('spin');
+    await refresh();
+    b.classList.remove('spin');
+    if ($('st').hidden) toast('Synchronisé');
   });
   $('meals').addEventListener('click', async (e) => {
     const b = e.target.closest('[data-del]'); if (!b) return;
@@ -258,7 +338,16 @@ function bind() {
     catch (e) { toast('Échec : ' + e.message); }
     menuBusy = false;
   }
-  $('menu').addEventListener('input', () => { clearTimeout(mt); mt = setTimeout(saveMenu, 800); });
+  $('menu').addEventListener('input', (e) => {
+    const f = e.target;
+    if (f.dataset.f === 'lien') {
+      const i = f.dataset.i, nom = $('menu').querySelector(`input[data-f=nom][data-i="${i}"]`), go = $('menu').querySelector(`[data-go="${i}"]`);
+      const u = safeUrl(f.value.trim());
+      if (u && !nom.value.trim()) nom.value = nomDepuisJow(u);
+      go.hidden = !u; if (u) go.href = u;
+    }
+    clearTimeout(mt); mt = setTimeout(saveMenu, 800);
+  });
   $('menu').addEventListener('change', saveMenu);
 
   // Textes enregistrés automatiquement
@@ -341,25 +430,45 @@ function bind() {
   addEventListener('online', refresh);
 }
 
+/* ---------- Thème clair / sombre ---------- */
+const THEMES = { auto: { ico: '🌗', nom: 'automatique' }, light: { ico: '☀️', nom: 'clair' }, dark: { ico: '🌙', nom: 'sombre' } };
+const THEME_BG = { light: '#fff6ee', dark: '#16131b' };
+function themeActuel() { const t = localStorage.getItem('mr-theme'); return THEMES[t] ? t : 'auto'; }
+function appliquerTheme(t, annonce) {
+  const root = document.documentElement;
+  if (t === 'auto') { root.removeAttribute('data-theme'); localStorage.removeItem('mr-theme'); }
+  else { root.setAttribute('data-theme', t); localStorage.setItem('mr-theme', t); }
+  // Couleur de la barre d'état (iPhone) et de la barre de titre (PC installé)
+  document.querySelectorAll('meta[name=theme-color]').forEach((m) => { m.content = t === 'auto' ? m.dataset.def : THEME_BG[t]; });
+  $('themeIco').textContent = THEMES[t].ico;
+  $('themeBtn').setAttribute('aria-label', `Thème ${THEMES[t].nom} : toucher pour changer`);
+  const r = document.querySelector(`input[name=theme][value="${t}"]`); if (r) r.checked = true;
+  requestAnimationFrame(renderEvo); // les graphiques lisent les couleurs du thème
+  if (annonce) toast(`Thème ${THEMES[t].nom}`);
+}
+function theme() {
+  appliquerTheme(themeActuel(), false);
+  const ordre = ['auto', 'light', 'dark'];
+  $('themeBtn').addEventListener('click', () => appliquerTheme(ordre[(ordre.indexOf(themeActuel()) + 1) % 3], true));
+  document.querySelectorAll('input[name=theme]').forEach((i) => i.addEventListener('change', () => appliquerTheme(i.value, false)));
+}
+
 /* ---------- Installation (PWA) ---------- */
 function pwa() {
   $('ver').textContent = 'Version ' + VERSION;
   const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
-  $('installDone').hidden = !standalone;
+  // Une fois l'appli installée, le cadre d'installation n'a plus d'utilité sur cet appareil.
+  $('installBox').hidden = Boolean(standalone);
   let prompt = null;
   addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); prompt = e; $('installBtn').hidden = false; });
   $('installBtn').addEventListener('click', async () => { if (!prompt) return; prompt.prompt(); await prompt.userChoice; prompt = null; $('installBtn').hidden = true; });
-  addEventListener('appinstalled', () => { $('installDone').hidden = false; $('installBtn').hidden = true; });
-  if ('serviceWorker' in navigator) {
-    const had = Boolean(navigator.serviceWorker.controller);
-    navigator.serviceWorker.register('sw.js').catch(() => {});
-    navigator.serviceWorker.addEventListener('controllerchange', () => { if (had) toast('Nouvelle version installée : elle sera active au prochain lancement'); });
-  }
+  addEventListener('appinstalled', () => { $('installBox').hidden = true; toast('Appli installée'); });
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 
 /* ---------- Démarrage ---------- */
 (async () => {
-  bind(); route(); pwa();
+  bind(); route(); pwa(); theme();
   if (!configured) $('st').textContent = 'Mode local : tes données restent sur cet appareil.';
   const back = await handleRedirect();
   // Un lien déjà utilisé n'est pas une erreur si l'on est connecté par ailleurs.

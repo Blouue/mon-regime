@@ -14,11 +14,14 @@ export function lineChart(s, pts, goal) {
   mn = Math.floor(mn - 0.3); mx = Math.ceil(mx + 0.3);
   const x = (i) => L + i * (W - L - R) / (pts.length - 1), y = (v) => Tp + (mx - v) * (H - Tp - B) / (mx - mn);
   let g = ''; const step = (mx - mn) > 6 ? 2 : 1;
-  for (let v = mn; v <= mx; v += step) g += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="${css('--soft')}"/><text x="${L - 6}" y="${y(v) + 4}" text-anchor="end" font-size="12" fill="${css('--mute')}">${v}</text>`;
+  for (let v = mn; v <= mx; v += step) g += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="${css('--line')}"/><text x="${L - 6}" y="${y(v) + 4}" text-anchor="end" font-size="12" fill="${css('--mute')}">${v}</text>`;
   if (goal && goal >= mn) g += `<line x1="${L}" x2="${W - R}" y1="${y(goal)}" y2="${y(goal)}" stroke="${css('--herb')}" stroke-dasharray="5 4" stroke-width="2"/><text x="${W - R}" y="${y(goal) - 5}" text-anchor="end" font-size="12" fill="${css('--herb')}">Objectif ${esc(fr1.format(goal))}</text>`;
   const pv = pts.map((p, i) => (p.v != null ? [x(i), y(p.v)] : null)).filter(Boolean);
-  g += `<path d="M${pv.map((p) => p.join(',')).join('L')}" fill="none" stroke="${css('--ink')}" stroke-width="2.5" stroke-linejoin="round"/>`;
-  const last = pv.at(-1); g += `<circle cx="${last[0]}" cy="${last[1]}" r="5" fill="${css('--tom')}"/>`;
+  const sky = css('--sky'), ligne = pv.map((p) => p.join(',')).join('L');
+  g += `<defs><linearGradient id="aire" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${sky}" stop-opacity=".28"/><stop offset="1" stop-color="${sky}" stop-opacity="0"/></linearGradient></defs>`;
+  g += `<path d="M${pv[0][0]},${H - B}L${ligne}L${pv.at(-1)[0]},${H - B}Z" fill="url(#aire)"/>`;
+  g += `<path d="M${ligne}" fill="none" stroke="${sky}" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>`;
+  const last = pv.at(-1); g += `<circle cx="${last[0]}" cy="${last[1]}" r="7" fill="${css('--card')}" stroke="${sky}" stroke-width="3"/>`;
   const ev = W < 520 ? 10 : 5;
   pts.forEach((p, i) => { if ((pts.length - 1 - i) % ev === 0) g += `<text x="${x(i)}" y="${H - 6}" text-anchor="middle" font-size="12" fill="${css('--mute')}">${esc(p.l)}</text>`; });
   s.innerHTML = g;
@@ -32,10 +35,10 @@ export function barChart(s, pts, goal, kind) {
   let g = '';
   [0, 0.5, 1].forEach((f) => { const v = Math.round(mx * f / 100) * 100; g += `<text x="${L - 6}" y="${y(v) + 4}" text-anchor="end" font-size="12" fill="${css('--mute')}">${W < 420 && v >= 1000 ? Math.round(v / 1000) + 'k' : fr.format(v)}</text>`; });
   pts.forEach((p, i) => {
-    const v = p.v || 0, h = H - B - y(v); const c = kind === 'kcal' && v > goal ? css('--tom') : css('--herb');
-    g += `<rect x="${L + i * bw + bw * 0.18}" y="${y(v)}" width="${bw * 0.64}" height="${Math.max(0, h)}" fill="${p.v == null ? css('--soft') : c}"/>`;
+    const v = p.v || 0, h = H - B - y(v); const c = kind === 'kcal' ? (v > goal ? css('--tom') : css('--herb')) : (v >= goal ? css('--herb') : css('--sky'));
+    g += `<rect x="${L + i * bw + bw * 0.2}" y="${p.v == null ? H - B - 4 : y(v)}" width="${bw * 0.6}" height="${p.v == null ? 4 : Math.max(4, h)}" rx="${Math.min(8, bw * 0.3)}" fill="${p.v == null ? css('--line') : c}"/>`;
     g += `<text x="${L + i * bw + bw / 2}" y="${H - 6}" text-anchor="middle" font-size="12" fill="${css('--mute')}">${esc(p.l)}</text>`;
   });
-  g += `<line x1="${L}" x2="${W - R}" y1="${y(goal)}" y2="${y(goal)}" stroke="${css('--ink')}" stroke-dasharray="5 4" stroke-width="1.5"/>`;
+  g += `<line x1="${L}" x2="${W - R}" y1="${y(goal)}" y2="${y(goal)}" stroke="${css('--mute')}" stroke-dasharray="4 5" stroke-width="1.5" stroke-linecap="round"/>`;
   s.innerHTML = g;
 }

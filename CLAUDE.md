@@ -25,7 +25,7 @@ Un prototype fonctionnel existe : `prototype/index.html`, publié comme artifact
 4. **Connexion** : objectifs (kcal, protéines, glucides, lipides, pas, poids visé), réglages Yazio → Apple Santé, création du raccourci iPhone pas à pas (avec l'URL de l'endpoint et le jeton), état de la synchro, et l'installation de l'appli.
 
 ## Design
-Garder celui du prototype : esprit « étiquette Valeurs nutritionnelles », filets noirs épais, police Archivo, papier blanc chaud `#fffdf8`, encre `#161616`, accent tomate `#d8401f`, vert herbe `#2e7d4f`, thème sombre. Mobile d'abord, barre d'onglets en bas, prise en compte des zones sûres iPhone.
+Depuis le 25/11/2026, à la demande de l'utilisateur : un style **chaleureux et coloré**, inspiré des applis grand public (Yazio, Lifesum), qui remplace l'esprit « étiquette nutritionnelle » du prototype, jugé trop sobre et trop chargé en chiffres. Cartes blanches arrondies sur fond crème, ombres douces, couleurs pastel par thème (tomate calories, vert pas, bleu poids, soleil, raisin, rose), **emojis** dans les titres et les repas, anneau de progression pour les calories, messages d'encouragement jamais culpabilisants, salutation selon l'heure, barre d'onglets flottante. Police Archivo (hébergée localement), thème sombre, mobile d'abord, zones sûres iPhone, deux colonnes sur grand écran. Moins de tableaux de chiffres : préférer des tuiles et des phrases.
 
 ## Données d'exemple
 Afficher un jeu d'exemple tant que l'utilisateur n'a rien saisi (voir `demoData()` dans le prototype), avec un bandeau qui le signale.

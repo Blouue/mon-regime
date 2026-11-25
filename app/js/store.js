@@ -16,7 +16,7 @@ const local = {
   write(r) { const { jeton, ...keep } = r; localStorage.setItem(LKEY, JSON.stringify(keep)); },
   async load() { return this.read(); },
   async mutate(fn) { const r = this.read(); fn(r); this.write(r); },
-  saveDay(date, vals) { return this.mutate((r) => { r.days[date] = { repas: [], ...r.days[date], ...vals }; }); },
+  saveDay(date, vals, source = 'manuel') { return this.mutate((r) => { r.days[date] = { repas: [], ...r.days[date], ...vals, _maj: new Date().toISOString(), _src: source }; }); },
   addMeal(date, meal) {
     return this.mutate((r) => { const d = (r.days[date] ||= { repas: [] }); (d.repas ||= []).push({ id: crypto.randomUUID(), ...meal }); });
   },
@@ -48,7 +48,7 @@ const remote = {
     for (const j of jours) {
       const { user_id, date, source, updated_at, ...v } = j;
       for (const k of Object.keys(v)) if (v[k] == null) delete v[k]; else v[k] = +v[k];
-      r.days[date] = { ...v, repas: [] };
+      r.days[date] = { ...v, repas: [], _maj: updated_at, _src: source };
     }
     for (const m of repas) (r.days[m.date] ||= { repas: [] }).repas.push({ id: m.id, m: m.moment, nom: m.nom, kcal: m.kcal });
     for (const m of menus) (r.menu[m.semaine] ||= {})[m.jour] = { nom: m.nom, lien: m.lien, ...(m.recette ? { recette: m.recette } : {}) };
