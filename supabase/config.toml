@@ -3,6 +3,3 @@
 # on désactive la vérification du JWT et c'est la fonction qui contrôle le jeton.
 [functions.import-sante]
 verify_jwt = false
-
-[functions.recette]
-verify_jwt = true

@@ -4,7 +4,7 @@ import { num, parseSanteText, normalize } from './parse.js';
 import { lineChart, barChart } from './charts.js';
 import { ACTIVITES, RYTHMES, activiteDepuisPas, profilComplet, calculer } from './calcul.js';
 
-const VERSION = '1.5.0';
+const VERSION = '1.6.0';
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const pad = (n) => String(n).padStart(2, '0');
@@ -15,21 +15,8 @@ const fr = new Intl.NumberFormat('fr-FR');
 const fr1 = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1, minimumFractionDigits: 1 });
 const frDate = (s, o = { day: 'numeric', month: 'long' }) => fromIso(s).toLocaleDateString('fr-FR', o);
 const JOURS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
-const monday = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; };
 let TODAY = new Date(); let T = iso(TODAY);
 const DEF_OBJ = { kcal: 1800, prot: 110, gluc: 180, lip: 60, pas: 8000, poidsCible: 74 };
-const DEF_INGR = ['filet de poulet', 'escalope de dinde', 'cabillaud', 'pavé de saumon', 'oeufs', 'skyr', 'fromage blanc 0%', 'lentilles', 'pois chiches', 'riz basmati', 'pâtes complètes', "flocons d'avoine", 'brocoli', 'courgette', 'haricots verts surgelés', 'épinards surgelés', 'carotte', 'tomate', 'pomme', 'banane'];
-const safeUrl = (u) => (/^https:\/\//i.test(u || '') ? u : '');
-/** https://jow.fr/recipes/poulet-curry-coco-4fd5a2b1 → « Poulet curry coco » */
-function nomDepuisJow(u) {
-  try {
-    const url = new URL(u);
-    if (!/(^|\.)jow\.fr$/i.test(url.hostname)) return '';
-    let s = decodeURIComponent(url.pathname.split('/').filter(Boolean).pop() || '');
-    s = s.replace(/-[a-z0-9]{6,}$/i, (m) => (/\d/.test(m) ? '' : m)).replace(/[-_]+/g, ' ').trim();
-    return s && s !== 'recipes' ? s[0].toUpperCase() + s.slice(1) : '';
-  } catch { return ''; }
-}
 const toast = (m) => { const t = $('toast'); t.textContent = m; t.classList.add('on'); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove('on'), 2600); };
 
 /* ---------- Données d'exemple ---------- */
@@ -42,10 +29,8 @@ function demoData() {
   }
   days[T] = { poids: days[T].poids, pas: 6240, kcal: 1385, prot: 88, gluc: 142, lip: 47, repas: [
     { id: 'd1', m: 'Matin', nom: "Skyr, flocons d'avoine, myrtilles", kcal: 340 }, { id: 'd2', m: 'Midi', nom: 'Salade lentilles, feta, concombre', kcal: 560 },
-    { id: 'd3', m: 'Goûter', nom: "Pomme et 15 g d'amandes", kcal: 175 }, { id: 'd4', m: 'Soir', nom: '(prévu) recette Jow', kcal: null }] };
-  const wk = iso(monday(TODAY));
-  const menu = { [wk]: { 0: { nom: 'Poulet curry coco & riz', lien: 'https://jow.fr/' }, 1: { nom: 'Saumon, haricots verts, citron', lien: 'https://jow.fr/' }, 2: { nom: 'Chili sin carne', lien: 'https://jow.fr/' }, 3: { nom: 'Pâtes complètes pesto courgettes', lien: 'https://jow.fr/' }, 4: { nom: 'Bowl dinde teriyaki', lien: 'https://jow.fr/' }, 5: { nom: 'Pizza maison légère', lien: 'https://jow.fr/' }, 6: { nom: 'Soupe potimarron & tartines', lien: 'https://jow.fr/' } } };
-  return { days, menu, notes: 'Acheter : potimarron, skyr, lentilles corail.\nRefaire le chili, en doublant les haricots.', obj: { ...DEF_OBJ } };
+    { id: 'd3', m: 'Goûter', nom: "Pomme et 15 g d'amandes", kcal: 175 }, { id: 'd4', m: 'Soir', nom: 'Poulet curry coco & riz', kcal: 520 }] };
+  return { days, notes: 'Acheter : potimarron, skyr, lentilles corail.\nRefaire le chili, en doublant les haricots.', obj: { ...DEF_OBJ } };
 }
 
 /* ---------- État ---------- */
@@ -55,8 +40,8 @@ let demo = true;
 let lastSync = null;
 
 function applyReal() {
-  const has = Object.keys(real.days).length || Object.keys(real.menu).length || (real.notes != null && real.notes !== '');
-  if (has) { S = { days: real.days, menu: real.menu, notes: real.notes || '', obj: { ...DEF_OBJ, ...(real.obj || {}) } }; demo = false; }
+  const has = Object.keys(real.days).length || (real.notes != null && real.notes !== '');
+  if (has) { S = { days: real.days, notes: real.notes || '', obj: { ...DEF_OBJ, ...(real.obj || {}) } }; demo = false; }
   else { S = demoData(); if (real.obj) S.obj = { ...DEF_OBJ, ...real.obj }; demo = true; }
   $('demo').hidden = !demo;
   render();
@@ -138,10 +123,6 @@ function renderToday() {
   $('macroBox').hidden = !demo && !Object.keys(S.days).some((k) => k >= depuis && ['prot', 'gluc', 'lip'].some((f) => S.days[k][f] != null));
   const M = [['🥩 Protéines', 'prot', o.prot], ['🍞 Glucides', 'gluc', o.gluc], ['🥑 Lipides', 'lip', o.lip]];
   $('macros').innerHTML = M.map(([n, f, g]) => { const v = d[f] || 0; return `<div class="macro ${f}"><span>${n}</span><div class="meter"><i style="width:${Math.min(100, v / g * 100)}%"></i></div><b>${esc(fr.format(v))} / ${fr.format(g)} g</b></div>`; }).join('');
-  const di = (TODAY.getDay() + 6) % 7, r = (S.menu[iso(monday(TODAY))] || {})[di];
-  $('tonight').innerHTML = r && r.nom
-    ? `<div><div class="n">${esc(r.nom)}</div><div class="small">${JOURS[di]} soir</div>${r.recette ? `<details><summary>Voir la recette</summary>${recHtml(r.recette)}</details>` : ''}</div>${safeUrl(r.lien) ? `<a class="btn tom" href="${esc(safeUrl(r.lien))}" target="_blank" rel="noopener noreferrer">Ouvrir dans Jow</a>` : ''}`
-    : `<div><div class="n">Rien de prévu 🤔</div><div class="small">Choisis une recette dans l'onglet Repas Jow.</div></div><a class="btn ghost" href="#repas">Planifier</a>`;
   const rep = d.repas || [];
   $('meals').innerHTML = rep.length
     ? rep.map((m) => `<div class="meal"><span class="mo ${esc(m.m)}" title="${esc(m.m)}" aria-label="${esc(m.m)}">${MOMENTS[m.m] || '🍴'}</span><span>${esc(m.nom)}</span><span>${m.kcal != null && m.kcal !== '' ? '<span class="k">' + esc(fr.format(m.kcal)) + ' kcal</span>' : ''}</span><button class="x" data-del="${esc(m.id)}" aria-label="Supprimer ${esc(m.nom)}">×</button></div>`).join('')
@@ -192,39 +173,7 @@ function renderEvo() {
   $('bilan').innerHTML = tiles.map(([c, e, l, v]) => `<div class="tile ${c}"><div class="t-h"><span class="e" aria-hidden="true">${e}</span> ${l}</div><div class="v">${esc(v)}</div></div>`).join('');
 }
 
-/* ---------- Rendu : Repas ---------- */
-let wOff = 0, menuKeyShown = null;
-const weekKey = () => iso(addD(monday(TODAY), wOff * 7));
-function renderMenu() {
-  const m = addD(monday(TODAY), wOff * 7), key = iso(m), wk = S.menu[key] || {};
-  $('wLbl').textContent = wOff === 0 ? 'Cette semaine' : 'Semaine du ' + m.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
-  // Ne pas réécrire les champs pendant la saisie.
-  if (!($('menu').contains(document.activeElement) && menuKeyShown === key)) {
-    $('menu').innerHTML = JOURS.map((j, i) => {
-      const d = addD(m, i), r = wk[i] || {}, u = safeUrl(r.lien);
-      return `<div class="day${iso(d) === T ? ' today' : ''}"><div class="d">${j} <span class="small">${d.getDate()}</span></div><div class="f">`
-        + `<input data-i="${i}" data-f="nom" value="${esc(r.nom)}" placeholder="Recette" aria-label="Recette ${j}" maxlength="300">`
-        + `<a class="go" data-go="${i}" href="${esc(u)}" target="_blank" rel="noopener noreferrer" aria-label="Ouvrir la recette de ${j} dans Jow"${u ? '' : ' hidden'}>↗</a>`
-        + `<input data-i="${i}" data-f="lien" value="${esc(r.lien)}" placeholder="Lien Jow (facultatif)" inputmode="url" aria-label="Lien Jow ${j}"></div></div>`;
-    }).join('');
-    menuKeyShown = key;
-  }
-  if (document.activeElement !== $('notes')) $('notes').value = S.notes || '';
-}
-
-function recHtml(r) {
-  const n = (x) => (x != null && x !== '' ? esc(fr.format(Math.round(+x) || 0)) : '–');
-  return `<div class="rec"><h3>${esc(r.nom)}</h3><div class="chips"><span>${n(r.kcal)} kcal / portion</span><span>P ${n(r.prot)} g</span><span>G ${n(r.gluc)} g</span><span>L ${n(r.lip)} g</span>${r.temps ? `<span>${esc(r.temps)}</span>` : ''}${r.portions ? `<span>${esc(r.portions)} pers.</span>` : ''}</div>
-  <b>Ingrédients</b><ul class="ing">${(r.ingredients || []).map((i) => `<li>${esc(i.qte)} ${esc(i.nom)}</li>`).join('')}</ul>
-  <b>Étapes</b><ol class="steps">${(r.etapes || []).map((e) => `<li>${esc(e)}</li>`).join('')}</ol>
-  ${(r.courses || []).length ? `<b>À acheter</b><ul class="ing">${r.courses.map((c) => `<li>${esc(c)}</li>`).join('')}</ul>` : ''}</div>`;
-}
-
-const ingrList = () => real.ingr || DEF_INGR;
-function renderShop() {
-  if (document.activeElement !== $('ingr')) $('ingr').value = ingrList().join('\n');
-  if (document.activeElement !== $('placard')) $('placard').value = real.placard || '';
-}
+function renderNotes() { if (document.activeElement !== $('notes')) $('notes').value = S.notes || ''; }
 
 /* ---------- Objectifs : à la main ou calcul automatique ---------- */
 const virgule = (v) => (v != null ? String(v).replace('.', ',') : '');
@@ -331,10 +280,10 @@ function renderAccount() {
   }
 }
 
-function render() { renderToday(); renderEvo(); renderMenu(); renderShop(); renderObj(); renderAccount(); }
+function render() { renderToday(); renderEvo(); renderNotes(); renderObj(); renderAccount(); }
 
 /* ---------- Navigation ---------- */
-const TITLES = { aujourdhui: "Aujourd'hui", evolution: 'Évolution', repas: 'Repas Jow', connexion: 'Connexion' };
+const TITLES = { aujourdhui: "Aujourd'hui", evolution: 'Évolution', connexion: 'Connexion' };
 /** Sur l'onglet du jour, le titre devient une salutation selon l'heure. */
 const salut = () => { const h = new Date().getHours(); return h < 5 ? 'Bonne nuit 🌙' : h < 12 ? 'Bonjour ☀️' : h < 18 ? 'Bon après-midi 👋' : 'Bonsoir 🌙'; };
 function route() {
@@ -400,40 +349,6 @@ function bind() {
     await act(() => store.deleteMeal(T, b.dataset.del));
   });
 
-  // Menu
-  $('wPrev').addEventListener('click', () => { wOff--; renderMenu(); });
-  $('wNext').addEventListener('click', () => { wOff++; renderMenu(); });
-  let mt; let menuBusy = false;
-  async function saveMenu() {
-    clearTimeout(mt);
-    if (menuBusy) { mt = setTimeout(saveMenu, 400); return; }
-    const key = weekKey(), jours = {};
-    $('menu').querySelectorAll('input').forEach((i) => { const n = i.dataset.i; jours[n] ||= { nom: '', lien: '' }; jours[n][i.dataset.f] = i.value.trim(); });
-    const old = real.menu[key] || {};
-    for (const n of Object.keys(jours)) {
-      if (jours[n].lien && !safeUrl(jours[n].lien)) { toast('Le lien doit commencer par https://'); return; }
-      if (old[n]?.recette && jours[n].nom === old[n].nom) jours[n].recette = old[n].recette;
-    }
-    const cur = Object.fromEntries(Object.entries(jours).filter(([, r]) => r.nom || r.lien || r.recette));
-    if (JSON.stringify(cur) === JSON.stringify(old)) return;
-    if (store.mode === 'signed-out') { toast("Connecte-toi (onglet Connexion) pour enregistrer"); return; }
-    menuBusy = true;
-    try { await store.saveMenuWeek(key, cur); real.menu[key] = cur; if (demo) applyReal(); else S.menu = real.menu; }
-    catch (e) { toast('Échec : ' + e.message); }
-    menuBusy = false;
-  }
-  $('menu').addEventListener('input', (e) => {
-    const f = e.target;
-    if (f.dataset.f === 'lien') {
-      const i = f.dataset.i, nom = $('menu').querySelector(`input[data-f=nom][data-i="${i}"]`), go = $('menu').querySelector(`[data-go="${i}"]`);
-      const u = safeUrl(f.value.trim());
-      if (u && !nom.value.trim()) nom.value = nomDepuisJow(u);
-      go.hidden = !u; if (u) go.href = u;
-    }
-    clearTimeout(mt); mt = setTimeout(saveMenu, 800);
-  });
-  $('menu').addEventListener('change', saveMenu);
-
   // Textes enregistrés automatiquement
   const autosave = (id, stId, save, current) => {
     let t;
@@ -447,8 +362,7 @@ function bind() {
     });
   };
   autosave('notes', 'notesSt', async (v) => { await store.saveText('notes', v); real.notes = v; if (demo) applyReal(); }, () => real.notes || '');
-  autosave('placard', 'placSt', async (v) => { await store.saveText('placard', v); real.placard = v; }, () => real.placard || '');
-  autosave('ingr', 'ingrSt', async (v) => { const l = v.split('\n').map((s) => s.trim()).filter(Boolean).slice(0, 80); await store.saveIngr(l); real.ingr = l; }, () => ingrList().join('\n'));
+
 
   // Objectifs
   $('objForm').addEventListener('submit', async (e) => {
@@ -476,30 +390,6 @@ function bind() {
     const pesee = (!lw || demo || Math.abs(lw.v - poids) >= 0.1) && !(S.days[T]?.poids === poids);
     await act(async () => { await store.saveObj(o); if (pesee) await store.saveDay(T, { poids }, 'manuel'); },
       `🎯 C'est parti : ${fr.format(r.kcal)} kcal par jour`);
-  });
-
-  // Recette
-  let lastRec = null;
-  $('propForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    if (store.mode !== 'remote') { $('pOut').innerHTML = '<p class="small">La proposition de recettes passe par ton compte : connecte-toi dans l\'onglet Connexion.</p>'; return; }
-    $('pBtn').disabled = true; $('pOut').innerHTML = '<p class="small">Recherche d\'une recette…</p>';
-    try {
-      const r = await store.proposeRecipe({ moment: $('pMom').value, envie: $('pEnv').value.trim(), date: T });
-      if (!r || !r.nom) throw new Error('réponse vide');
-      lastRec = r;
-      $('pOut').innerHTML = recHtml(r) + `<form class="form f-prop" id="addRec"><select id="aDay" aria-label="Jour">${JOURS.map((j, i) => `<option value="${i}"${i === (TODAY.getDay() + 6) % 7 ? ' selected' : ''}>${j}</option>`).join('')}</select><button>Ajouter au menu</button><button type="button" class="ghost" id="again">Autre idée</button></form>`;
-      $('again').onclick = () => $('propForm').requestSubmit();
-      $('addRec').onsubmit = async (ev) => {
-        ev.preventDefault(); const key = weekKey(), i = $('aDay').value;
-        const jours = structuredClone(real.menu[key] || {});
-        jours[i] = { nom: lastRec.nom, lien: jours[i]?.lien || '', recette: lastRec };
-        await act(() => store.saveMenuWeek(key, jours), 'Ajoutée au menu de ' + JOURS[i]);
-      };
-    } catch (err) {
-      $('pOut').innerHTML = '<p class="small">' + esc(err.status === 429 ? 'Trop de demandes, réessaie dans un moment.' : err.code === 'offline' ? 'Hors ligne : réessaie une fois connecté.' : 'Pas de recette cette fois : ' + err.message) + '</p>';
-    }
-    $('pBtn').disabled = false;
   });
 
   // Compte

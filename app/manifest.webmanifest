@@ -1,7 +1,7 @@
 {
   "name": "Mon régime",
   "short_name": "Mon régime",
-  "description": "Suivi de régime personnel : Apple Santé, menus Jow et recettes.",
+  "description": "Suivi de régime personnel : calories, poids et pas depuis Apple Santé.",
   "lang": "fr",
   "dir": "ltr",
   "id": "./",

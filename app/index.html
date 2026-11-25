@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="description" content="Suivi de régime personnel : Apple Santé, menus Jow et recettes.">
+<meta name="description" content="Suivi de régime personnel : calories, poids et pas depuis Apple Santé.">
 <meta name="theme-color" content="#fff6ee" media="(prefers-color-scheme: light)" data-def="#fff6ee">
 <meta name="theme-color" content="#16131b" media="(prefers-color-scheme: dark)" data-def="#16131b">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -49,8 +49,10 @@
   <div class="lbl" id="macroBox"><h2><span class="e" aria-hidden="true">🥗</span> Macros</h2><div id="macros"></div></div>
 
   <div class="lbl">
-    <h2><span class="e" aria-hidden="true">🍲</span> Ce soir</h2>
-    <div class="tonight" id="tonight"></div>
+    <div class="tonight">
+      <div><h2 style="margin:0"><span class="e" aria-hidden="true">🍲</span> Mes recettes</h2><div class="small">Menus et courses dans l'appli Jow.</div></div>
+      <a class="btn tom" href="https://jow.fr/" target="_blank" rel="noopener noreferrer">Ouvrir Jow ↗</a>
+    </div>
   </div>
 
   <div class="lbl">
@@ -90,6 +92,12 @@
       <button id="impBtn" type="button">Enregistrer</button>
     </details>
   </details>
+
+  <details class="lbl fold" id="notesBox">
+    <summary><h2><span class="e" aria-hidden="true">🗒️</span> Mes notes</h2></summary>
+    <textarea id="notes" placeholder="Courses à prévoir, idées, ressentis…" style="min-height:140px"></textarea>
+    <p class="small saved" id="notesSt"></p>
+  </details>
 </section>
 
 <!-- ÉVOLUTION -->
@@ -98,39 +106,6 @@
   <div class="lbl span"><h2><span class="e" aria-hidden="true">⚖️</span> Mon poids sur 30 jours</h2><p class="small" id="wtSum"></p><div class="fig"><svg id="cW" role="img" aria-label="Courbe du poids sur 30 jours"></svg></div></div>
   <div class="lbl"><h2><span class="e" aria-hidden="true">🔥</span> Calories de la semaine</h2><p class="small">Le pointillé, c'est ton objectif.</p><div class="fig s"><svg id="cK" role="img" aria-label="Calories des 7 derniers jours"></svg></div></div>
   <div class="lbl"><h2><span class="e" aria-hidden="true">👟</span> Pas de la semaine</h2><div class="fig s"><svg id="cS" role="img" aria-label="Pas des 7 derniers jours"></svg></div></div>
-</section>
-
-<!-- REPAS JOW -->
-<section data-v="repas">
-  <div class="lbl">
-    <h2><span class="e" aria-hidden="true">📅</span> Menu de la semaine</h2>
-    <div class="weeknav"><button class="ghost" id="wPrev" type="button" aria-label="Semaine précédente">‹</button><b id="wLbl"></b><button class="ghost" id="wNext" type="button" aria-label="Semaine suivante">›</button></div>
-    <div id="menu"></div>
-    <p class="small">Dans Jow : Partager → Copier le lien, puis colle-le ici. Le nom de la recette se remplit tout seul, et tout s'enregistre automatiquement.</p>
-  </div>
-  <div class="lbl" id="propBox">
-    <h2><span class="e" aria-hidden="true">✨</span> Une idée de recette ?</h2>
-    <p class="small">Calée sur ce qu'il te reste aujourd'hui, ton garde-manger et tes ingrédients courants.</p>
-    <form class="form f-prop" id="propForm">
-      <select id="pMom" aria-label="Repas"><option>Soir</option><option>Midi</option><option>Matin</option><option>Goûter</option></select>
-      <input id="pEnv" placeholder="Une envie ? (ex. rapide, poisson, sans four)" aria-label="Envie" maxlength="200">
-      <button id="pBtn" class="primary">Proposer</button>
-    </form>
-    <div id="pOut"></div>
-  </div>
-  <div class="lbl">
-    <h2><span class="e" aria-hidden="true">🧺</span> Mon garde-manger</h2>
-    <p class="small">Ce que tu as déjà au frigo et dans les placards.</p>
-    <textarea id="placard" placeholder="2 courgettes, riz basmati, 6 œufs, feta…" maxlength="5000"></textarea>
-    <p class="small saved" id="placSt"></p>
-  </div>
-  <div class="lbl"><h2><span class="e" aria-hidden="true">🗒️</span> Notes</h2><textarea id="notes" placeholder="Courses à prévoir, recettes à retester, idées…" style="min-height:140px"></textarea><p class="small saved" id="notesSt"></p></div>
-  <details class="lbl fold">
-    <summary><h2><span class="e" aria-hidden="true">🛒</span> Mes ingrédients courants</h2></summary>
-    <p class="small">Un par ligne : ce que tu achètes d'habitude. Les propositions de recettes s'en servent en priorité.</p>
-    <textarea id="ingr" style="min-height:160px"></textarea>
-    <p class="small saved" id="ingrSt"></p>
-  </details>
 </section>
 
 <!-- CONNEXION -->
@@ -255,7 +230,6 @@
 <nav class="tabs" aria-label="Onglets">
   <a href="#aujourdhui" data-t="aujourdhui"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg>Aujourd'hui</a>
   <a href="#evolution" data-t="evolution"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20h18M4 16l5-6 4 3 7-8"/></svg>Évolution</a>
-  <a href="#repas" data-t="repas"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3v8M5 3v5a2 2 0 0 0 4 0V3M7 11v10M16 21V3c-2 1-3 4-3 8h3"/></svg>Repas Jow</a>
   <a href="#connexion" data-t="connexion"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 15l6-6M10 6l2-2a4 4 0 0 1 6 6l-2 2M14 18l-2 2a4 4 0 0 1-6-6l2-2"/></svg>Connexion</a>
 </nav>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>

@@ -1,6 +1,6 @@
 // Service worker : l'interface marche hors-ligne. Les données récentes sont gardées par l'appli elle-même
 // (localStorage) ; les appels à Supabase ne sont jamais mis en cache ici.
-const VERSION = 'v1.5.0';
+const VERSION = 'v1.6.0';
 const SHELL = [
   './', './index.html', './styles.css', './config.js', './manifest.webmanifest',
   './js/theme.js', './js/main.js', './js/store.js', './js/supabase.js', './js/parse.js', './js/charts.js', './js/calcul.js',

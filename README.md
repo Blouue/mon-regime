@@ -1,6 +1,6 @@
 # Mon régime
 
-Appli web personnelle (PWA) de suivi de régime : Apple Santé via un raccourci iPhone, menus Jow, recettes proposées par Claude.
+Appli web personnelle (PWA) de suivi de régime : calories, poids et pas depuis Apple Santé via un raccourci iPhone, journal des repas, objectifs calculés automatiquement.
 Le cahier des charges est dans `CLAUDE.md`.
 
 ## Organisation
@@ -11,7 +11,6 @@ Le cahier des charges est dans `CLAUDE.md`.
 | `app/config.js` | L'URL Supabase et la clé publique « anon ». Laisser vide pour le mode local. |
 | `supabase/migrations/` | Schéma SQL et règles RLS. |
 | `supabase/functions/import-sante` | Reçoit les données du raccourci iPhone (jeton `X-Jeton`). |
-| `supabase/functions/recette` | Propose une recette via l'API Claude (la clé reste côté serveur). |
 | `tools/serve.ps1` | Serveur local de test : `http://localhost:5173/`. |
 | `tools/make-icons.ps1` | Régénère les icônes. |
 | `prototype/` | L'ancien prototype, pour référence. |
@@ -33,7 +32,7 @@ Tant que `config.js` est vide, l'appli tourne en **mode local** : les données r
    Puis, dans **Templates → Magic Link**, ajoute le code à côté du lien : `<p>Ou saisis ce code dans l'appli : <strong>{{ .Token }}</strong></p>`. Sur iPhone, l'appli installée ne partage pas sa session avec Safari : il faut donc pouvoir se connecter avec le code.
 5. Dans **Authentication → URL Configuration**, mets l'adresse de l'appli (`https://blouue.github.io/mon-regime/`) en *Site URL* et dans *Redirect URLs*. Ajoute aussi `http://localhost:5173/` pour les tests.
 6. Dans **Project Settings → API**, copie *Project URL* et la clé *anon / publishable* dans `app/config.js`. **Jamais la clé service_role.**
-7. Connecte-toi une première fois dans l'appli. Ensuite, désactive les inscriptions (**Authentication → Sign In / Providers → Allow new users to sign up**) : personne d'autre ne pourra créer de compte, et donc personne d'autre ne pourra appeler l'API Claude à tes frais.
+7. Connecte-toi une première fois dans l'appli. Ensuite, désactive les inscriptions (**Authentication → Sign In / Providers → Allow new users to sign up**) : personne d'autre ne pourra créer de compte.
 
 ### Edge Functions
 
@@ -42,14 +41,9 @@ Avec la CLI Supabase via npx. Sous PowerShell, écris `npx.cmd` : l'exécution d
 ```powershell
 npx.cmd supabase login
 npx.cmd supabase link --project-ref wpwpkyotypodhqtevois
-npx.cmd supabase secrets set APP_ORIGIN=https://blouue.github.io
 npx.cmd supabase functions deploy import-sante --no-verify-jwt --use-api
-npx.cmd supabase functions deploy recette --use-api
 ```
 
-La clé `ANTHROPIC_API_KEY` se saisit à la main dans **Edge Functions → Secrets** (elle ne doit jamais passer par un fichier ni par l'historique du terminal). Le compte API Claude doit avoir du crédit.
-
-`CLAUDE_MODEL` est un secret facultatif : `claude-haiku-5-5` par défaut (environ 0,002 $ par recette). Mets `claude-opus-5-5` pour des recettes plus fines (environ 0,05 $).
 On peut aussi créer les fonctions sans CLI, depuis le tableau de bord (Edge Functions → Deploy a new function) : il faut alors y coller aussi `_shared/parse.js`.
 
 ## Déploiement sur GitHub Pages (gratuit, HTTPS)

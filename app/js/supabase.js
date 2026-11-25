@@ -121,4 +121,3 @@ export const rest = {
 };
 
 export const functionUrl = (name) => `${BASE}/functions/v1/${name}`;
-export const invoke = (name, body) => call('/functions/v1/' + name, { method: 'POST', body });
