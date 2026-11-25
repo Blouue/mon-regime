@@ -3,7 +3,7 @@ import { configured, currentUser, onAuth, handleRedirect, sendMagicLink, verifyC
 import { num, parseSanteText, normalize } from './parse.js';
 import { lineChart, barChart } from './charts.js';
 
-const VERSION = '1.1.1';
+const VERSION = '1.1.2';
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const pad = (n) => String(n).padStart(2, '0');
@@ -313,7 +313,7 @@ function bind() {
   $('mailForm').addEventListener('submit', async (e) => {
     e.preventDefault(); mail = $('email').value.trim(); const b = e.submitter; b.disabled = true;
     try { await sendMagicLink(mail); toast('E-mail envoyé à ' + mail); $('codeForm').hidden = false; $('code').focus(); }
-    catch (err) { toast(err.status === 429 ? 'Trop de demandes : attends une minute' : 'Envoi impossible : ' + err.message); }
+    catch (err) { toast(err.status === 429 ? 'Trop de demandes : attends 1 à 2 minutes avant de redemander un e-mail' : 'Envoi impossible : ' + err.message); }
     b.disabled = false;
   });
   $('codeForm').addEventListener('submit', async (e) => {

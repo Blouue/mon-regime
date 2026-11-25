@@ -27,25 +27,27 @@ Tant que `config.js` est vide, l'appli tourne en **mode local** : les données r
 ## Mise en route de Supabase (offre gratuite)
 
 1. Crée un projet sur supabase.com, région Europe (Paris ou Francfort).
-2. Ouvre **SQL Editor**, colle le contenu de `supabase/migrations/20261125000000_schema.sql` et clique sur **Run**.
+2. Applique le schéma : `npx.cmd supabase db push --remote` (après `login` et `link`, voir plus bas), ou colle `supabase/migrations/20261125000000_schema.sql` dans **SQL Editor** → **Run**.
 3. Dans **Authentication → Sign In / Providers**, garde **Email** activé.
-4. Dans **Authentication → Emails → Magic Link**, ajoute le code dans le modèle, par exemple
-   `<p>Ton code : <b>{{ .Token }}</b></p>`, à côté du lien. Sur iPhone, l'appli installée ne partage pas sa session avec Safari : il faut donc pouvoir se connecter avec le code.
-5. Dans **Authentication → URL Configuration**, mets l'adresse de l'appli (par ex. `https://<ton-compte>.github.io/mon-regime/`) en *Site URL* et dans *Redirect URLs*. Ajoute aussi `http://localhost:5173/` pour les tests.
+4. Branche un SMTP (**Authentication → Emails → SMTP Settings**). Sans lui, les modèles d'e-mail ne sont pas modifiables et l'envoi est limité à environ 2 e-mails par heure. Ici : Gmail (`smtp.gmail.com`, port 587, identifiant = l'adresse Gmail, mot de passe = un *mot de passe d'application* Google, qui demande la validation en deux étapes).
+   Puis, dans **Templates → Magic Link**, ajoute le code à côté du lien : `<p>Ou saisis ce code dans l'appli : <strong>{{ .Token }}</strong></p>`. Sur iPhone, l'appli installée ne partage pas sa session avec Safari : il faut donc pouvoir se connecter avec le code.
+5. Dans **Authentication → URL Configuration**, mets l'adresse de l'appli (`https://blouue.github.io/mon-regime/`) en *Site URL* et dans *Redirect URLs*. Ajoute aussi `http://localhost:5173/` pour les tests.
 6. Dans **Project Settings → API**, copie *Project URL* et la clé *anon / publishable* dans `app/config.js`. **Jamais la clé service_role.**
 7. Connecte-toi une première fois dans l'appli. Ensuite, désactive les inscriptions (**Authentication → Sign In / Providers → Allow new users to sign up**) : personne d'autre ne pourra créer de compte, et donc personne d'autre ne pourra appeler l'API Claude à tes frais.
 
 ### Edge Functions
 
-Avec la CLI Supabase (`npm i -g supabase`, ou `scoop install supabase`) :
+Avec la CLI Supabase via npx. Sous PowerShell, écris `npx.cmd` : l'exécution de scripts `.ps1` est bloquée sur ce PC.
 
 ```powershell
-supabase login
-supabase link --project-ref <ref-du-projet>
-supabase secrets set ANTHROPIC_API_KEY=<ta-clé> APP_ORIGIN=https://<ton-compte>.github.io
-supabase functions deploy import-sante --no-verify-jwt
-supabase functions deploy recette
+npx.cmd supabase login
+npx.cmd supabase link --project-ref wpwpkyotypodhqtevois
+npx.cmd supabase secrets set APP_ORIGIN=https://blouue.github.io
+npx.cmd supabase functions deploy import-sante --no-verify-jwt --use-api
+npx.cmd supabase functions deploy recette --use-api
 ```
+
+La clé `ANTHROPIC_API_KEY` se saisit à la main dans **Edge Functions → Secrets** (elle ne doit jamais passer par un fichier ni par l'historique du terminal). Le compte API Claude doit avoir du crédit.
 
 `CLAUDE_MODEL` est un secret facultatif : `claude-haiku-5-5` par défaut (environ 0,002 $ par recette). Mets `claude-opus-5-5` pour des recettes plus fines (environ 0,05 $).
 On peut aussi créer les fonctions sans CLI, depuis le tableau de bord (Edge Functions → Deploy a new function) : il faut alors y coller aussi `_shared/parse.js`.
