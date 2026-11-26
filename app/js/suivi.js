@@ -143,3 +143,28 @@ export function depenseMesuree(days, T, n = 21) {
   const poids = { bonne: 0.8, moyenne: 0.6, faible: 0.4 }[confiance];
   return { ok: true, ...base, valeur: Math.round(valeur / 10) * 10, apport: Math.round(apport), pente: pnt, confiance, poids };
 }
+
+/*
+ * Résumé partagé avec les amis (« Ensemble ») : uniquement des indicateurs, jamais le poids exact
+ * ni les calories du jour. Les kilos perdus ne sont inclus que si l'utilisateur l'autorise.
+ */
+export function resumePartage(days, o, T, montrerKg = false) {
+  const pesees = Object.keys(days).filter((k) => k <= T && days[k].poids).sort();
+  const t0 = pesees.length ? tendanceAu(days, pesees[0]) : null, t1 = tendanceAu(days, T);
+  const perdu = t0 != null && t1 != null ? Math.round((t0 - t1) * 10) / 10 : null;
+  const pct = t0 != null && t1 != null && o.poidsCible && t0 > o.poidsCible
+    ? Math.max(0, Math.min(100, Math.round(((t0 - t1) / (t0 - o.poidsCible)) * 100))) : null;
+  const t = fromIso(T), lundi = addD(t, -((t.getDay() + 6) % 7));
+  let notes = 0, ok = 0;
+  for (let d = new Date(lundi); iso(d) <= T; d = addD(d, 1)) { const x = days[iso(d)]; if (x?.kcal != null) { notes++; if (x.kcal <= o.kcal) ok++; } }
+  const pas = []; for (let i = 0; i < 7; i++) { const x = days[iso(addD(t, -i))]; if (x?.pas != null) pas.push(x.pas); }
+  const derniers = Object.keys(days).filter((k) => k <= T && (days[k].kcal != null || days[k].pas != null || days[k].poids)).sort();
+  return {
+    pct, ...(montrerKg && perdu != null ? { perdu } : {}), montrerKg,
+    semaine: { lundi: iso(lundi), ok, notes },
+    pas7: pas.length ? Math.round(pas.reduce((a, b) => a + b, 0) / pas.length) : null,
+    serieKcal: serie(days, o, T, 'kcal'), seriePas: serie(days, o, T, 'pas'),
+    badges: badges(days, o).filter((b) => b.ok).length,
+    dernier: derniers.at(-1) || null,
+  };
+}

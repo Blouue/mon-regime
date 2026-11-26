@@ -6,7 +6,7 @@ const pad = (n) => String(n).padStart(2, '0');
 const iso = (d) => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
 const ago = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return iso(d); };
 
-export const empty = () => ({ days: {}, notes: null, obj: null, jeton: null });
+export const empty = () => ({ days: {}, notes: null, obj: null, jeton: null, partage: null, amis: [] });
 /** Champs d'une journée enregistrés en base. */
 export const CHAMPS = ['poids', 'pas', 'kcal', 'prot', 'gluc', 'lip', 'eau', 'faim', 'energie', 'humeur'];
 
@@ -28,6 +28,10 @@ const local = {
   saveText(table, texte) { return this.mutate((r) => { r[table] = texte; }); },
   saveObj(obj) { return this.mutate((r) => { r.obj = obj; }); },
   async newJeton() { throw new Error('Connecte-toi à ton compte pour créer un jeton.'); },
+  async savePartage() { throw new Error('Ensemble demande un compte connecté.'); },
+  async ajouterAmi() { throw new Error('Ensemble demande un compte connecté.'); },
+  async retirerAmi() {},
+  async arreterPartage() {},
 };
 
 /* ---------------- Supabase ---------------- */
@@ -35,12 +39,14 @@ const uid = () => currentUser()?.id;
 const remote = {
   kind: 'remote',
   async load() {
-    const [obj, jours, repas, notes, jeton] = await Promise.all([
+    const [obj, jours, repas, notes, jeton, partages, liens] = await Promise.all([
       rest.get('objectifs?select=*'),
       rest.get(`jours?select=*&date=gte.${ago(400)}&order=date`),
       rest.get(`repas?select=id,date,moment,nom,kcal&date=gte.${ago(14)}&order=created_at`),
       rest.get('notes?select=texte'),
       rest.get('jetons_import?select=cree_le,dernier_usage'),
+      rest.get('partage?select=*'),
+      rest.get('amis?select=user_id,ami_id'),
     ]);
     const r = empty();
     for (const j of jours) {
@@ -58,6 +64,10 @@ const remote = {
       r.obj.mode = o.mode || 'manuel';
     }
     r.jeton = jeton[0] || null;
+    // Ensemble : mon résumé, et ceux de mes amis (la RLS ne laisse voir que ceux-là)
+    r.partage = partages.find((p) => p.user_id === uid()) || null;
+    const idsAmis = new Set(liens.filter((l) => l.user_id === uid()).map((l) => l.ami_id));
+    r.amis = partages.filter((p) => idsAmis.has(p.user_id));
     return r;
   },
   saveDay(date, vals, source = 'manuel') {
@@ -85,6 +95,11 @@ const remote = {
     }
     return total;
   },
+  /* ---------- Ensemble ---------- */
+  savePartage(p) { return rest.upsert('partage', { user_id: uid(), pseudo: p.pseudo, code: p.code, stats: p.stats, maj: new Date().toISOString() }, 'user_id'); },
+  async ajouterAmi(code) { return rest.rpc('ajouter_ami', { p_code: code }); },
+  retirerAmi(id) { const me = uid(); return rest.del(`amis?or=(and(user_id.eq.${me},ami_id.eq.${id}),and(user_id.eq.${id},ami_id.eq.${me}))`); },
+  async arreterPartage() { const me = uid(); await rest.del(`amis?or=(user_id.eq.${me},ami_id.eq.${me})`); await rest.del('partage?user_id=eq.' + me); },
   /** Toutes les données du compte, pour la sauvegarde. */
   async exportAll() {
     const tout = async (table, ordre) => { const res = []; for (let o = 0; ; o += 1000) { const p = await rest.get(`${table}?select=*&order=${ordre}&offset=${o}&limit=1000`); res.push(...p); if (p.length < 1000) return res; } };
@@ -126,6 +141,6 @@ export const store = {
   },
   clearCache() { Object.keys(localStorage).filter((k) => k.startsWith('mr-cache-')).forEach((k) => localStorage.removeItem(k)); },
 };
-for (const m of ['saveDay', 'saveDays', 'addMeal', 'deleteMeal', 'saveText', 'saveObj', 'newJeton', 'exportAll']) {
+for (const m of ['saveDay', 'saveDays', 'addMeal', 'deleteMeal', 'saveText', 'saveObj', 'newJeton', 'exportAll', 'savePartage', 'ajouterAmi', 'retirerAmi', 'arreterPartage']) {
   store[m] = (...a) => store.backend[m](...a);
 }

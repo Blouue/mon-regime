@@ -108,6 +108,52 @@
   <div class="lbl"><h2><span class="e" aria-hidden="true">👟</span> Pas de la semaine</h2><div class="fig s"><svg id="cS" role="img" aria-label="Pas des 7 derniers jours"></svg></div></div>
 </section>
 
+<!-- ENSEMBLE -->
+<section data-v="ensemble">
+  <div class="lbl" id="ensHors" hidden>
+    <h2><span class="e" aria-hidden="true">👥</span> Se motiver à plusieurs</h2>
+    <p>Ensemble demande un compte connecté : va dans l'onglet <b>Connexion</b>.</p>
+  </div>
+
+  <div class="lbl ens-intro" id="ensActiver" hidden>
+    <h2><span class="e" aria-hidden="true">👥</span> Se motiver à plusieurs</h2>
+    <p>Suis tes amis et lancez-vous des petits défis chaque semaine. Chacun ne voit qu'un <b>résumé</b> de l'autre :</p>
+    <ul class="phrases">
+      <li>✅ sa progression vers son objectif, en %</li>
+      <li>✅ ses jours dans l'objectif cette semaine, ses pas moyens, ses séries et ses badges</li>
+      <li>🔒 jamais son poids exact, ses calories ni son historique</li>
+    </ul>
+    <form class="form f-mail" id="ensForm">
+      <input id="ensPseudo" maxlength="30" placeholder="Ton pseudo" aria-label="Ton pseudo" required>
+      <button class="primary">Activer</button>
+    </form>
+  </div>
+
+  <div id="ensActif" hidden>
+    <div class="lbl" id="ensPodium"></div>
+    <div id="ensAmis"></div>
+    <div class="lbl">
+      <h2><span class="e" aria-hidden="true">🤝</span> Ajouter un ami</h2>
+      <p class="small">Donne ton code à ton ami, ou tape le sien.</p>
+      <div class="copy"><code id="ensCode" class="code-ami"></code><button class="ghost" type="button" id="ensPartager">Envoyer</button></div>
+      <form class="form f-mail" id="ensAjout">
+        <input id="ensCodeAmi" maxlength="9" placeholder="Code de ton ami" aria-label="Code de ton ami" autocapitalize="characters" autocomplete="off" required>
+        <button class="primary">Ajouter</button>
+      </form>
+    </div>
+    <details class="lbl fold">
+      <summary><h2><span class="e" aria-hidden="true">🔒</span> Ce que mes amis voient</h2></summary>
+      <form class="form f-mail" id="ensPseudoForm">
+        <input id="ensPseudo2" maxlength="30" aria-label="Mon pseudo" required>
+        <button class="ghost">Renommer</button>
+      </form>
+      <label class="bascule"><input type="checkbox" id="ensKg"> Montrer mes kilos perdus (sinon, seulement le pourcentage)</label>
+      <p class="small">Tes amis voient ta progression en %, tes jours dans l'objectif de la semaine, tes pas moyens sur 7 jours, tes séries, ton nombre de badges et ton dernier jour suivi. Jamais ton poids, tes calories ni ton historique.</p>
+      <p><button type="button" class="ghost danger" id="ensStop">Arrêter le partage</button></p>
+    </details>
+  </div>
+</section>
+
 <!-- CONNEXION -->
 <section data-v="connexion">
   <div class="lbl" id="accBox">
@@ -252,6 +298,7 @@
 <nav class="tabs" aria-label="Onglets">
   <a href="#aujourdhui" data-t="aujourdhui"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg>Aujourd'hui</a>
   <a href="#evolution" data-t="evolution"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20h18M4 16l5-6 4 3 7-8"/></svg>Évolution</a>
+  <a href="#ensemble" data-t="ensemble"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 19c.6-3.2 3-5 6-5s5.4 1.8 6 5"/><circle cx="17" cy="9" r="2.6"/><path d="M15.5 14.2c2.4.2 4.2 1.8 4.8 4.8"/></svg>Ensemble</a>
   <a href="#connexion" data-t="connexion"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 15l6-6M10 6l2-2a4 4 0 0 1 6 6l-2 2M14 18l-2 2a4 4 0 0 1-6-6l2-2"/></svg>Connexion</a>
 </nav>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>

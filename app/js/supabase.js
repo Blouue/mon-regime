@@ -160,6 +160,7 @@ export const rest = {
     method: 'POST', body: rows, headers: { Prefer: ret ? 'return=representation' : 'return=minimal' },
   }),
   del: (path) => call('/rest/v1/' + path, { method: 'DELETE', headers: { Prefer: 'return=minimal' } }),
+  rpc: (fn, args) => call('/rest/v1/rpc/' + fn, { method: 'POST', body: args }),
 };
 
 export const functionUrl = (name) => `${BASE}/functions/v1/${name}`;

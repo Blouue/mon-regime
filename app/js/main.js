@@ -3,10 +3,10 @@ import { configured, currentUser, onAuth, handleRedirect, sendMagicLink, verifyC
 import { num, parseSanteText, normalize } from './parse.js';
 import { lineChart, barChart } from './charts.js';
 import { ACTIVITES, RYTHMES, activiteDepuisPas, profilComplet, calculer } from './calcul.js';
-import { tendanceAu, projection, serie, badges, semaineDerniere, depenseMesuree } from './suivi.js';
+import { tendanceAu, projection, serie, badges, semaineDerniere, depenseMesuree, resumePartage } from './suivi.js';
 import { lireExportSante } from './export-sante.js';
 
-const VERSION = '1.8.0';
+const VERSION = '1.9.0';
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const pad = (n) => String(n).padStart(2, '0');
@@ -70,6 +70,7 @@ async function refresh() {
   }
   applyReal(); renderAccount();
   await recalcAuto();
+  await publierResume();
 }
 
 /** La ligne d'état ne s'affiche que lorsqu'il y a quelque chose à signaler. */
@@ -244,6 +245,72 @@ function renderDepense() {
     ${compare}`;
 }
 
+/* ---------- Ensemble : se suivre entre amis ---------- */
+const CODE_ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // sans O, I, 0 ni 1 pour éviter les confusions
+const nouveauCode = () => Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => CODE_ALPHA[b % CODE_ALPHA.length]).join('');
+const joliCode = (c) => (c ? c.slice(0, 4) + '-' + c.slice(4) : '');
+const lundiCourant = () => { const d = new Date(TODAY); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return iso(d); };
+
+/** Met à jour mon résumé partagé s'il a changé (pas d'écriture inutile à chaque synchronisation). */
+async function publierResume() {
+  const p = real.partage;
+  if (!p || demo || store.mode !== 'remote') return;
+  const st = resumePartage(S.days, S.obj, T, p.stats?.montrerKg === true);
+  if (JSON.stringify(st) === JSON.stringify(p.stats)) return;
+  try { await store.savePartage({ ...p, stats: st }); real.partage = { ...p, stats: st }; } catch { /* réessayé à la prochaine synchronisation */ }
+}
+
+const quandFr = (d) => {
+  if (!d) return 'pas encore de données';
+  const j = Math.round((fromIso(T) - fromIso(d)) / 864e5);
+  return j <= 0 ? "aujourd'hui" : j === 1 ? 'hier' : `il y a ${j} jours`;
+};
+const initiale = (n) => esc((n || '?').trim().charAt(0).toUpperCase());
+
+function renderEnsemble() {
+  const remote = store.mode === 'remote', p = real.partage;
+  $('ensHors').hidden = remote;
+  $('ensActiver').hidden = !remote || !!p;
+  $('ensActif').hidden = !remote || !p;
+  if (!remote || !p) return;
+  const moi = { pseudo: p.pseudo, stats: resumePartage(S.days, S.obj, T, p.stats?.montrerKg === true), moi: true };
+  const amis = (real.amis || []).map((a) => ({ id: a.user_id, pseudo: a.pseudo, stats: a.stats || {}, maj: a.maj }));
+  const tous = [moi, ...amis], lun = lundiCourant();
+  // Les chiffres de la semaine d'un ami qui n'a rien publié depuis lundi ne comptent pas.
+  const semaine = (x) => (x.stats.semaine?.lundi === lun ? x.stats.semaine : { ok: 0, notes: 0 });
+
+  // Classement de la semaine
+  const podium = (titre, e, val, fmt) => {
+    const l = tous.map((x) => ({ x, v: val(x) })).filter((y) => y.v != null).sort((a, b) => b.v - a.v);
+    if (!l.length) return '';
+    return `<div><h3>${e} ${titre}</h3><ol>${l.map((y, i) => `<li><span aria-hidden="true">${['🥇', '🥈', '🥉'][l.filter((z) => z.v > y.v).length] || '·'}</span>${esc(y.x.moi ? y.x.pseudo + ' (toi)' : y.x.pseudo)}<b>${fmt(y.v, y.x)}</b></li>`).join('')}</ol></div>`;
+  };
+  $('ensPodium').innerHTML = amis.length
+    ? `<h2><span class="e" aria-hidden="true">🏆</span> Classement de la semaine</h2><div class="podium">
+        ${podium("Jours dans l'objectif", '🔥', (x) => semaine(x).ok, (v, x) => `${v} / ${semaine(x).notes || 0}`)}
+        ${podium('Pas par jour (7 jours)', '👟', (x) => x.stats.pas7 ?? null, (v) => fr.format(v))}
+        ${podium('Vers son objectif', '🎯', (x) => x.stats.pct ?? null, (v) => v + ' %')}
+      </div><p class="small">Remis à zéro chaque lundi.</p>`
+    : `<h2><span class="e" aria-hidden="true">🏆</span> Classement de la semaine</h2><p class="empty"><span class="e" aria-hidden="true">🤝</span>Ajoute un ami ci-dessous pour lancer la compétition.</p>`;
+
+  // Une carte par personne (moi d'abord)
+  const carte = (x) => {
+    const st = x.stats, se = semaine(x);
+    const tuiles = [
+      ['grape', '🎯', 'Objectif', st.pct != null ? st.pct + ' %' : '–', st.perdu != null ? `−${fr1.format(st.perdu)} kg` : ''],
+      ['tom', '🔥', 'Cette semaine', `${se.ok} / ${se.notes}`, 'jours dans l\'objectif'],
+      ['herb', '👟', 'Pas par jour', st.pas7 != null ? fr.format(st.pas7) : '–', 'sur 7 jours'],
+      ['sun', '🏅', 'Badges', String(st.badges ?? 0), st.serieKcal ? `série de ${st.serieKcal} j 🔥` : st.seriePas ? `série de ${st.seriePas} j 👟` : ''],
+    ];
+    return `<div class="lbl"><div class="ami-h"><span class="avatar${x.moi ? ' moi' : ''}" aria-hidden="true">${initiale(x.pseudo)}</span><div><b>${esc(x.pseudo)}${x.moi ? ' (toi)' : ''}</b><span class="small">Dernier jour suivi : ${esc(quandFr(st.dernier))}</span></div>${x.moi ? '' : `<button class="x" type="button" data-retirer="${esc(x.id)}" aria-label="Retirer ${esc(x.pseudo)} de mes amis" title="Retirer">×</button>`}</div>
+      <div class="tiles four" style="margin:0">${tuiles.map(([c, e, l, v, sub]) => `<div class="tile ${c}"><div class="t-h"><span class="e" aria-hidden="true">${e}</span> ${l}</div><div class="v">${esc(v)}</div><div class="small">${esc(sub)}</div></div>`).join('')}</div></div>`;
+  };
+  $('ensAmis').innerHTML = tous.map(carte).join('');
+  $('ensCode').textContent = joliCode(p.code);
+  if (document.activeElement !== $('ensPseudo2')) $('ensPseudo2').value = p.pseudo;
+  $('ensKg').checked = p.stats?.montrerKg === true;
+}
+
 /* ---------- Séries et badges ---------- */
 function renderReussites() {
   const o = S.obj, sr = [
@@ -363,10 +430,11 @@ function renderAccount() {
   }
 }
 
-function render() { renderToday(); renderEvo(); renderNotes(); renderObj(); renderAccount(); }
+function render() {
+  renderEnsemble(); renderToday(); renderEvo(); renderNotes(); renderObj(); renderAccount(); }
 
 /* ---------- Navigation ---------- */
-const TITLES = { aujourdhui: "Aujourd'hui", evolution: 'Évolution', connexion: 'Connexion' };
+const TITLES = { aujourdhui: "Aujourd'hui", evolution: 'Évolution', ensemble: 'Ensemble', connexion: 'Connexion' };
 /** Sur l'onglet du jour, le titre devient une salutation selon l'heure. */
 const salut = () => { const h = new Date().getHours(); return h < 5 ? 'Bonne nuit 🌙' : h < 12 ? 'Bonjour ☀️' : h < 18 ? 'Bon après-midi 👋' : 'Bonsoir 🌙'; };
 function route() {
@@ -441,6 +509,45 @@ function bind() {
     } catch (e) {
       st.textContent = '😕 Import impossible : ' + (e.message || e);
     } finally { btn.disabled = false; setTimeout(() => { barre.hidden = true; }, 1500); }
+  });
+
+  // Ensemble : activer, ajouter, retirer, renommer, arrêter
+  $('ensForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const pseudo = $('ensPseudo').value.trim(); if (!pseudo) return;
+    await act(() => store.savePartage({ pseudo, code: nouveauCode(), stats: resumePartage(S.days, S.obj, T, false) }), '👥 Partage activé : envoie ton code à ton ami');
+  });
+  $('ensAjout').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const code = $('ensCodeAmi').value.trim(); if (!code) return;
+    try {
+      const nom = await store.ajouterAmi(code);
+      $('ensCodeAmi').value = ''; toast(`🤝 Tu suis maintenant ${nom}, et ${nom} te suit aussi !`); await refresh();
+    } catch (err) { toast(err.message || 'Ajout impossible'); }
+  });
+  $('ensAmis').addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-retirer]'); if (!b) return;
+    if (!confirm('Retirer cet ami ? Vous ne verrez plus vos progressions, ni l\'un ni l\'autre.')) return;
+    await act(() => store.retirerAmi(b.dataset.retirer), 'Ami retiré');
+  });
+  $('ensPseudoForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const pseudo = $('ensPseudo2').value.trim(); if (!pseudo || !real.partage) return;
+    await act(() => store.savePartage({ ...real.partage, pseudo }), 'Pseudo modifié');
+  });
+  $('ensKg').addEventListener('change', async () => {
+    if (!real.partage) return;
+    const st = resumePartage(S.days, S.obj, T, $('ensKg').checked);
+    await act(() => store.savePartage({ ...real.partage, stats: st }), $('ensKg').checked ? 'Tes amis voient tes kilos perdus' : 'Tes amis ne voient plus que le pourcentage');
+  });
+  $('ensStop').addEventListener('click', async () => {
+    if (!confirm('Arrêter le partage ? Ton résumé et tous tes liens d\'amis seront supprimés.')) return;
+    await act(() => store.arreterPartage(), 'Partage arrêté');
+  });
+  $('ensPartager').addEventListener('click', async () => {
+    const code = joliCode(real.partage?.code), texte = `Rejoins-moi sur Mon régime pour qu'on se motive ensemble ! Mon code ami : ${code}`;
+    if (navigator.share) { try { await navigator.share({ text: texte }); return; } catch { /* annulé */ } }
+    try { await navigator.clipboard.writeText(code); toast('Code copié : ' + code); } catch { toast('Ton code : ' + code); }
   });
 
   // Sauvegarde de mes données
