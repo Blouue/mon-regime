@@ -163,6 +163,8 @@ export function resumePartage(days, o, T, montrerKg = false) {
     pct, ...(montrerKg && perdu != null ? { perdu } : {}), montrerKg,
     semaine: { lundi: iso(lundi), ok, notes },
     pas7: pas.length ? Math.round(pas.reduce((a, b) => a + b, 0) / pas.length) : null,
+    // Pas du jour même, avec la date : on ne compare que des journées identiques.
+    pasJour: days[T]?.pas ?? null, jour: T,
     serieKcal: serie(days, o, T, 'kcal'), seriePas: serie(days, o, T, 'pas'),
     badges: badges(days, o).filter((b) => b.ok).length,
     dernier: derniers.at(-1) || null,

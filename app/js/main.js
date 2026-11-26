@@ -6,7 +6,7 @@ import { ACTIVITES, RYTHMES, activiteDepuisPas, profilComplet, calculer } from '
 import { tendanceAu, projection, serie, badges, semaineDerniere, depenseMesuree, resumePartage } from './suivi.js';
 import { lireExportSante } from './export-sante.js';
 
-const VERSION = '1.9.0';
+const VERSION = '1.9.1';
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const pad = (n) => String(n).padStart(2, '0');
@@ -288,6 +288,7 @@ function renderEnsemble() {
   $('ensPodium').innerHTML = amis.length
     ? `<h2><span class="e" aria-hidden="true">🏆</span> Classement de la semaine</h2><div class="podium">
         ${podium("Jours dans l'objectif", '🔥', (x) => semaine(x).ok, (v, x) => `${v} / ${semaine(x).notes || 0}`)}
+        ${podium("Pas aujourd'hui", '🚶', (x) => (x.stats.jour === T ? x.stats.pasJour ?? null : null), (v) => fr.format(v))}
         ${podium('Pas par jour (7 jours)', '👟', (x) => x.stats.pas7 ?? null, (v) => fr.format(v))}
         ${podium('Vers son objectif', '🎯', (x) => x.stats.pct ?? null, (v) => v + ' %')}
       </div><p class="small">Remis à zéro chaque lundi.</p>`
@@ -299,7 +300,7 @@ function renderEnsemble() {
     const tuiles = [
       ['grape', '🎯', 'Objectif', st.pct != null ? st.pct + ' %' : '–', st.perdu != null ? `−${fr1.format(st.perdu)} kg` : ''],
       ['tom', '🔥', 'Cette semaine', `${se.ok} / ${se.notes}`, 'jours dans l\'objectif'],
-      ['herb', '👟', 'Pas par jour', st.pas7 != null ? fr.format(st.pas7) : '–', 'sur 7 jours'],
+      ['herb', '👟', 'Pas par jour', st.pas7 != null ? fr.format(st.pas7) : '–', `sur 7 jours${st.jour === T && st.pasJour != null ? ` · aujourd'hui ${fr.format(st.pasJour)}` : ''}`],
       ['sun', '🏅', 'Badges', String(st.badges ?? 0), st.serieKcal ? `série de ${st.serieKcal} j 🔥` : st.seriePas ? `série de ${st.seriePas} j 👟` : ''],
     ];
     return `<div class="lbl"><div class="ami-h"><span class="avatar${x.moi ? ' moi' : ''}" aria-hidden="true">${initiale(x.pseudo)}</span><div><b>${esc(x.pseudo)}${x.moi ? ' (toi)' : ''}</b><span class="small">Dernier jour suivi : ${esc(quandFr(st.dernier))}</span></div>${x.moi ? '' : `<button class="x" type="button" data-retirer="${esc(x.id)}" aria-label="Retirer ${esc(x.pseudo)} de mes amis" title="Retirer">×</button>`}</div>
