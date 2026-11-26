@@ -6,7 +6,7 @@ import { ACTIVITES, RYTHMES, activiteDepuisPas, profilComplet, calculer } from '
 import { tendanceAu, projection, serie, badges, semaineDerniere } from './suivi.js';
 import { lireExportSante } from './export-sante.js';
 
-const VERSION = '1.7.1';
+const VERSION = '1.7.2';
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const pad = (n) => String(n).padStart(2, '0');

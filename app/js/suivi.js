@@ -112,7 +112,7 @@ export function semaineDerniere(days, o, T) {
     phrases.push(dlt <= -0.1 ? `⚖️ Ta tendance a baissé de ${fr1.format(-dlt)} kg.` : dlt < 0.1 ? '⚖️ Ton poids est stable.' : `⚖️ Ta tendance a un peu remonté (+${fr1.format(dlt)} kg) : rien d'inquiétant sur une semaine.`);
   }
   const conseil = moyPas != null && moyPas < o.pas * 0.8 ? '💡 Défi de la semaine : 15 minutes de marche après le dîner.'
-    : k.length && n < k.length / 2 ? '💡 Défi de la semaine : prévois tes dîners dans Jow dès le dimanche.'
+    : k.length && n < k.length / 2 ? "💡 Défi de la semaine : prévois tes dîners à l'avance, dès le dimanche."
     : '💡 Continue sur cette lancée, tu es sur la bonne voie 🌱';
   phrases.push(conseil);
   return { titre, phrases, lundi: iso(lundi) };
