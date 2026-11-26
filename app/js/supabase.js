@@ -5,23 +5,39 @@ export const configured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 const BASE = SUPABASE_URL.replace(/\/+$/, '');
 const KEY = 'mr-session';
 
-let session = null;
-try { session = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch { session = null; }
+const lireStockee = () => { try { return JSON.parse(localStorage.getItem(KEY) || 'null'); } catch { return null; } };
+let session = lireStockee();
 const listeners = new Set();
 
+/** Enregistre la session. Les écouteurs ne sont prévenus que si l'utilisateur change (connexion, déconnexion),
+ *  pas à chaque renouvellement de clé, pour éviter de recharger tout l'écran toutes les heures. */
 function setSession(s) {
+  const change = (s?.user?.id || null) !== (session?.user?.id || null);
   session = s;
   if (s) localStorage.setItem(KEY, JSON.stringify(s)); else localStorage.removeItem(KEY);
-  listeners.forEach((f) => f(s));
+  if (change) listeners.forEach((f) => f(s));
 }
 export const onAuth = (f) => { listeners.add(f); return () => listeners.delete(f); };
 export const currentUser = () => session?.user || null;
+
+/** Un autre onglet (ou l'appli installée) a peut-être déjà renouvelé la clé : on reprend la plus récente. */
+function synchroniser() {
+  const st = lireStockee();
+  if (st && session && st.user?.id === session.user?.id && st.refresh_token !== session.refresh_token && (st.expires_at || 0) >= (session.expires_at || 0)) { session = st; return true; }
+  return false;
+}
+if (typeof addEventListener === 'function') addEventListener('storage', (e) => {
+  if (e.key !== KEY) return;
+  const st = lireStockee(), change = (st?.user?.id || null) !== (session?.user?.id || null);
+  session = st;
+  if (change) listeners.forEach((f) => f(st));
+});
 
 export class ApiError extends Error {
   constructor(message, status, code) { super(message); this.status = status; this.code = code; }
 }
 
-async function call(path, { method = 'GET', body, headers = {}, auth = true } = {}) {
+async function call(path, { method = 'GET', body, headers = {}, auth = true } = {}, dejaRenouvele = false) {
   const h = { apikey: SUPABASE_ANON_KEY, ...headers };
   if (body !== undefined) h['Content-Type'] = 'application/json';
   if (auth) {
@@ -41,7 +57,11 @@ async function call(path, { method = 'GET', body, headers = {}, auth = true } = 
   let data = null;
   try { data = txt ? JSON.parse(txt) : null; } catch { data = txt; }
   if (!r.ok) {
-    if (r.status === 401 && auth) setSession(null);
+    // Clé refusée : on la renouvelle et on réessaie une fois, au lieu de déconnecter aussitôt.
+    if (r.status === 401 && auth && !dejaRenouvele && session) {
+      const t = await renouveler(true);
+      if (t) return call(path, { method, body, headers, auth }, true);
+    }
     const msg = data?.msg || data?.message || data?.error_description || data?.error || 'Erreur ' + r.status;
     throw new ApiError(msg, r.status, data?.code || data?.error_code);
   }
@@ -57,17 +77,39 @@ function fromTokenResponse(d) {
   };
 }
 
+/**
+ * Renouvelle la clé d'accès. Ne déconnecte que si le serveur refuse vraiment la clé de renouvellement
+ * (révoquée, expirée, compte supprimé) ; une panne passagère garde la session.
+ * @param {boolean} force renouveler même si la clé semble encore valable (après un 401)
+ */
 let refreshing = null;
-async function accessToken() {
-  if (!session) return null;
-  if (session.expires_at - 60 > Date.now() / 1000) return session.access_token;
+function renouveler(force = false) {
   if (!refreshing) {
-    refreshing = call('/auth/v1/token?grant_type=refresh_token', { method: 'POST', body: { refresh_token: session.refresh_token }, auth: false })
-      .then((d) => { setSession(fromTokenResponse(d)); return session.access_token; })
-      .catch((e) => { if (e.code !== 'offline') setSession(null); return e.code === 'offline' ? session?.access_token : null; })
-      .finally(() => { refreshing = null; });
+    refreshing = (async () => {
+      if (!session) return null;
+      if (synchroniser() && session.expires_at - 60 > Date.now() / 1000) return session.access_token;
+      if (!force && session.expires_at - 60 > Date.now() / 1000) return session.access_token;
+      try {
+        const d = await call('/auth/v1/token?grant_type=refresh_token', { method: 'POST', body: { refresh_token: session.refresh_token }, auth: false });
+        setSession({ ...fromTokenResponse(d), user: fromTokenResponse(d).user || session.user });
+        return session.access_token;
+      } catch (e) {
+        if (e.code === 'offline' || e.status === 0 || e.status === 429 || e.status >= 500) return null; // passager
+        if (synchroniser()) return session.access_token; // un autre onglet a renouvelé la clé juste avant
+        setSession(null); // la session n'est vraiment plus valable : il faudra se reconnecter
+        return null;
+      }
+    })().finally(() => { refreshing = null; });
   }
   return refreshing;
+}
+
+async function accessToken() {
+  if (!session) return null;
+  synchroniser();
+  if (session.expires_at - 60 > Date.now() / 1000) return session.access_token;
+  // Clé expirée : on la renouvelle ; si le serveur est injoignable, on tente quand même avec l'ancienne.
+  return (await renouveler()) || session?.access_token || null;
 }
 
 /** À appeler au démarrage : récupère la session si l'on revient d'un lien magique. */
