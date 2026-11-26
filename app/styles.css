@@ -231,6 +231,13 @@ nav.tabs a svg{width:23px;height:23px;stroke:currentColor;fill:none;stroke-width
 nav.tabs a.on{color:var(--tom);background:var(--tom-t)}
 .toast{position:fixed;left:50%;bottom:calc(100px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 18px;font-weight:700;border-radius:99px;opacity:0;transition:opacity .25s;pointer-events:none;z-index:9;max-width:90vw;box-shadow:0 8px 24px var(--shadow)}
 .toast.on{opacity:1}
+.accueil{position:fixed;inset:0;display:grid;place-items:center;z-index:20;background:color-mix(in srgb,var(--bg) 55%,transparent);backdrop-filter:blur(4px);opacity:0;transition:opacity .35s;pointer-events:none}
+.accueil[hidden]{display:none}
+.accueil.on{opacity:1}
+.accueil>div{background:var(--card);border-radius:28px;padding:26px 30px;text-align:center;box-shadow:0 18px 50px var(--shadow);max-width:min(86vw,420px);transform:scale(.9);transition:transform .35s}
+.accueil.on>div{transform:scale(1)}
+.accueil .e{font-size:44px;display:block;margin-bottom:8px}
+.accueil p{margin:0;font-size:22px;font-weight:800;line-height:1.25}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 
 @media(max-width:520px){.f-prop{grid-template-columns:minmax(0,1fr) auto}.f-prop select{grid-column:1/-1}}

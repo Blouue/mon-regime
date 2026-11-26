@@ -6,7 +6,7 @@ const pad = (n) => String(n).padStart(2, '0');
 const iso = (d) => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
 const ago = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return iso(d); };
 
-export const empty = () => ({ days: {}, notes: null, obj: null, jeton: null, partage: null, amis: [] });
+export const empty = () => ({ days: {}, notes: null, obj: null, jeton: null, partage: null, amis: [], accueil: null });
 /** Champs d'une journée enregistrés en base. */
 export const CHAMPS = ['poids', 'pas', 'kcal', 'prot', 'gluc', 'lip', 'eau', 'faim', 'energie', 'humeur'];
 
@@ -39,7 +39,7 @@ const uid = () => currentUser()?.id;
 const remote = {
   kind: 'remote',
   async load() {
-    const [obj, jours, repas, notes, jeton, partages, liens] = await Promise.all([
+    const [obj, jours, repas, notes, jeton, partages, liens, accueil] = await Promise.all([
       rest.get('objectifs?select=*'),
       rest.get(`jours?select=*&date=gte.${ago(400)}&order=date`),
       rest.get(`repas?select=id,date,moment,nom,kcal&date=gte.${ago(14)}&order=created_at`),
@@ -47,6 +47,7 @@ const remote = {
       rest.get('jetons_import?select=cree_le,dernier_usage'),
       rest.get('partage?select=*'),
       rest.get('amis?select=user_id,ami_id'),
+      rest.get('accueil?select=texte').catch(() => []), // message d'accueil personnel, facultatif
     ]);
     const r = empty();
     for (const j of jours) {
@@ -68,6 +69,7 @@ const remote = {
     r.partage = partages.find((p) => p.user_id === uid()) || null;
     const idsAmis = new Set(liens.filter((l) => l.user_id === uid()).map((l) => l.ami_id));
     r.amis = partages.filter((p) => idsAmis.has(p.user_id));
+    r.accueil = accueil[0]?.texte || null;
     return r;
   },
   saveDay(date, vals, source = 'manuel') {

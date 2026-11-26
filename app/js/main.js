@@ -6,7 +6,7 @@ import { ACTIVITES, RYTHMES, activiteDepuisPas, profilComplet, calculer } from '
 import { tendanceAu, projection, serie, badges, semaineDerniere, depenseMesuree, resumePartage } from './suivi.js';
 import { lireExportSante } from './export-sante.js';
 
-const VERSION = '1.9.1';
+const VERSION = '1.9.2';
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const pad = (n) => String(n).padStart(2, '0');
@@ -54,6 +54,18 @@ async function act(fn, ok) {
   catch (e) { toast(e.code === 'offline' ? 'Hors ligne : réessaie une fois connecté' : 'Échec : ' + e.message); return false; }
 }
 
+/** Message d'accueil personnel : une fois par ouverture de l'appli, pendant 2 secondes. */
+let accueilVu = false;
+function montrerAccueil() {
+  if (accueilVu || !real.accueil || store.mode !== 'remote') return;
+  accueilVu = true;
+  const el = $('accueil');
+  el.querySelector('p').textContent = real.accueil;
+  el.hidden = false;
+  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('on')));
+  setTimeout(() => { el.classList.remove('on'); setTimeout(() => { el.hidden = true; }, 400); }, 2000);
+}
+
 async function refresh() {
   TODAY = new Date(); T = iso(TODAY);
   try {
@@ -68,7 +80,7 @@ async function refresh() {
       showStatus('Synchronisation impossible : ' + e.message);
     }
   }
-  applyReal(); renderAccount();
+  applyReal(); renderAccount(); montrerAccueil();
   await recalcAuto();
   await publierResume();
 }
