@@ -51,7 +51,6 @@ function derniereTendance(days, T) {
 const CONDITIONS = {
   kcal: (x, o) => x?.kcal != null && x.kcal <= o.kcal,
   pas: (x, o) => x?.pas != null && x.pas >= o.pas,
-  eau: (x) => (x?.eau || 0) >= 8,
 };
 
 /** Série en cours : jours consécutifs jusqu'à aujourd'hui (ou hier si aujourd'hui n'est pas encore rempli). */
@@ -84,7 +83,6 @@ export function badges(days, o) {
     { e: '🔥', nom: '3 jours d\'affilée', ok: sk >= 3 },
     { e: '🏆', nom: '7 jours d\'affilée', ok: sk >= 7 },
     { e: '👟', nom: '10 000 pas en un jour', ok: vals.some((x) => (x.pas || 0) >= 10000) },
-    { e: '💧', nom: '2 litres d\'eau', ok: vals.some((x) => (x.eau || 0) >= 8) },
     { e: '🌱', nom: '−1 kg', ok: perdu >= 1 },
     { e: '🥈', nom: '−3 kg', ok: perdu >= 3 },
     { e: '🥇', nom: '−5 kg', ok: perdu >= 5 },

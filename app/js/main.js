@@ -6,7 +6,7 @@ import { ACTIVITES, RYTHMES, activiteDepuisPas, profilComplet, calculer } from '
 import { tendanceAu, projection, serie, badges, semaineDerniere } from './suivi.js';
 import { lireExportSante } from './export-sante.js';
 
-const VERSION = '1.7.2';
+const VERSION = '1.7.3';
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const pad = (n) => String(n).padStart(2, '0');
@@ -29,7 +29,7 @@ function demoData() {
     w -= 0.09 + Math.sin(i * 2.3) * 0.18;
     days[d] = { poids: +w.toFixed(1), pas: Math.round(5200 + r * 6200), kcal: Math.round(1580 + Math.cos(i * 1.3) * 260), prot: Math.round(95 + r * 25), gluc: Math.round(160 + Math.cos(i) * 30), lip: Math.round(55 + Math.sin(i) * 10), repas: [] };
   }
-  days[T] = { poids: days[T].poids, pas: 6240, kcal: 1385, prot: 88, gluc: 142, lip: 47, eau: 5, faim: 2, energie: 4, humeur: 4, repas: [] };
+  days[T] = { poids: days[T].poids, pas: 6240, kcal: 1385, prot: 88, gluc: 142, lip: 47, repas: [] };
   return { days, notes: 'Acheter : potimarron, skyr, lentilles corail.\nRefaire le chili, en doublant les haricots.', obj: { ...DEF_OBJ } };
 }
 
@@ -132,24 +132,7 @@ function renderToday() {
   $('macroBox').hidden = !demo && !Object.keys(S.days).some((k) => k >= depuis && ['prot', 'gluc', 'lip'].some((f) => S.days[k][f] != null));
   const M = [['🥩 Protéines', 'prot', o.prot], ['🍞 Glucides', 'gluc', o.gluc], ['🥑 Lipides', 'lip', o.lip]];
   $('macros').innerHTML = M.map(([n, f, g]) => { const v = d[f] || 0; return `<div class="macro ${f}"><span>${n}</span><div class="meter"><i style="width:${Math.min(100, v / g * 100)}%"></i></div><b>${esc(fr.format(v))} / ${fr.format(g)} g</b></div>`; }).join('');
-  renderEau(d); renderRessenti(d); renderManque(); renderLundi();
-}
-
-/* ---------- Eau : 8 verres de 25 cl ---------- */
-function renderEau(d) {
-  const n = d.eau || 0;
-  $('verres').innerHTML = Array.from({ length: 8 }, (_, i) => `<button type="button" class="${i < n ? 'on' : ''}" data-verre="${i + 1}" aria-label="${i + 1} verre${i ? 's' : ''}" aria-pressed="${i < n}">💧</button>`).join('');
-  $('eauTxt').textContent = n ? `${String(n * 0.25).replace('.', ',')} L${n >= 8 ? ' · bravo 🎉' : ''}` : '';
-}
-
-/* ---------- Ressenti du jour : faim, énergie, humeur (1 à 5) ---------- */
-const ECHELLES = [
-  ['faim', 'Faim', ['😌', '🙂', '😋', '😬', '😫'], ['Rassasié', 'Un peu', 'Normale', 'Faim', 'Très faim']],
-  ['energie', 'Énergie', ['🪫', '😴', '😐', '🙂', '⚡'], ['À plat', 'Fatigué', 'Moyenne', 'En forme', 'Au top']],
-  ['humeur', 'Humeur', ['😞', '😕', '😐', '🙂', '😄'], ['Pas top', 'Bof', 'Neutre', 'Bien', 'Super']],
-];
-function renderRessenti(d) {
-  $('ressenti').innerHTML = ECHELLES.map(([k, nom, em, lib]) => `<div class="echelle" role="group" aria-label="${nom}"><span>${nom}</span>${em.map((e, i) => `<button type="button" class="${d[k] === i + 1 ? 'on' : ''}" data-res="${k}" data-val="${i + 1}" aria-label="${nom} : ${lib[i]}" aria-pressed="${d[k] === i + 1}" title="${lib[i]}">${e}</button>`).join('')}</div>`).join('');
+  renderManque(); renderLundi();
 }
 
 /* ---------- Alerte quand le raccourci n'a rien envoyé ---------- */
@@ -238,7 +221,6 @@ function renderReussites() {
   const o = S.obj, sr = [
     ['🔥', serie(S.days, o, T, 'kcal'), 'dans ton objectif calories'],
     ['👟', serie(S.days, o, T, 'pas'), `à ${fr.format(o.pas)} pas ou plus`],
-    ['💧', serie(S.days, o, T, 'eau'), "à 2 litres d'eau"],
   ];
   $('series').innerHTML = sr.map(([e, n, l]) => `<div class="serie"><span class="e" aria-hidden="true">${e}</span><span>${n ? `<b>${n} jour${n > 1 ? 's' : ''}</b> d'affilée ${l}` : `Lance une série : un jour ${l}`}</span></div>`).join('');
   $('badges').innerHTML = badges(S.days, o).map((x) => `<div class="badge${x.ok ? '' : ' lock'}" title="${x.ok ? 'Gagné' : 'À débloquer'}"><span class="e" aria-hidden="true">${x.e}</span>${esc(x.nom)}</div>`).join('');
@@ -393,25 +375,6 @@ function bind() {
     const { date, ...vals } = normalize(raw, T);
     if (!Object.keys(vals).length) { toast('Remplis au moins un champ'); return; }
     if (await act(() => store.saveDay(date, vals, 'manuel'), 'Données du ' + frDate(date) + ' enregistrées')) e.target.querySelectorAll('input:not([type=date])').forEach((i) => { i.value = ''; });
-  });
-
-  // Eau et ressenti : enregistrés aussitôt, l'écran se met à jour sans attendre
-  const majJour = async (vals) => {
-    if (store.mode === 'signed-out') { toast("Connecte-toi (onglet Connexion) pour enregistrer"); return; }
-    if (demo) { real.days[T] = { repas: [], ...real.days[T] }; }
-    const avant = { ...(real.days[T] || {}) };
-    real.days[T] = { repas: [], ...avant, ...vals }; applyReal();
-    try { await store.saveDay(T, vals, null); }
-    catch (e) { real.days[T] = avant; applyReal(); toast(e.code === 'offline' ? 'Hors ligne : réessaie une fois connecté' : 'Échec : ' + e.message); }
-  };
-  $('verres').addEventListener('click', (e) => {
-    const b = e.target.closest('[data-verre]'); if (!b) return;
-    const n = +b.dataset.verre, cur = S.days[T]?.eau || 0;
-    majJour({ eau: n === cur ? n - 1 : n });
-  });
-  $('ressenti').addEventListener('click', (e) => {
-    const b = e.target.closest('[data-res]'); if (!b) return;
-    majJour({ [b.dataset.res]: +b.dataset.val });
   });
 
   // Alerte « il manque des données » : saisie à la main de la veille
