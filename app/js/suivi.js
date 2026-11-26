@@ -115,3 +115,31 @@ export function semaineDerniere(days, o, T) {
   phrases.push(conseil);
   return { titre, phrases, lundi: iso(lundi) };
 }
+
+/*
+ * Dépense réelle mesurée (même principe que les applis « adaptatives ») :
+ * sur les 3 dernières semaines complètes (jusqu'au dimanche précédent, pour rester stable toute la semaine),
+ * dépense ≈ apport moyen − variation de la tendance du poids × 7 700 kcal/kg.
+ * Les journées sous 800 kcal sont écartées : ce sont presque toujours des journées mal ou pas notées.
+ */
+const KCAL_PAR_KG = 7700;
+export function depenseMesuree(days, T, n = 21) {
+  const t = fromIso(T), fin = addD(t, -((t.getDay() + 6) % 7) - 1), debut = addD(fin, -(n - 1));
+  const apports = [], pts = [];
+  for (let i = 0; i < n; i++) {
+    const k = iso(addD(debut, i)), x = days[k];
+    if (x?.kcal >= 800) apports.push(x.kcal);
+    if (x?.poids) pts.push([i, tendanceAu(days, k)]);
+  }
+  const base = { debut: iso(debut), fin: iso(fin), jours: apports.length, pesees: pts.length, joursRequis: 10, peseesRequises: 4 };
+  if (apports.length < 10 || pts.length < 4 || pts.at(-1)[0] - pts[0][0] < 10) return { ok: false, ...base };
+  const apport = apports.reduce((a, b) => a + b, 0) / apports.length;
+  const mx = pts.reduce((a, p) => a + p[0], 0) / pts.length, my = pts.reduce((a, p) => a + p[1], 0) / pts.length;
+  const pnt = pts.reduce((a, p) => a + (p[0] - mx) * (p[1] - my), 0) / pts.reduce((a, p) => a + (p[0] - mx) ** 2, 0);
+  const valeur = apport - pnt * KCAL_PAR_KG;
+  if (!Number.isFinite(valeur) || valeur < 1200 || valeur > 5000) return { ok: false, incoherent: true, ...base };
+  // Confiance selon la quantité de données : elle règle la part de la mesure face à la formule théorique.
+  const confiance = apports.length >= 18 && pts.length >= 8 ? 'bonne' : apports.length >= 14 && pts.length >= 6 ? 'moyenne' : 'faible';
+  const poids = { bonne: 0.8, moyenne: 0.6, faible: 0.4 }[confiance];
+  return { ok: true, ...base, valeur: Math.round(valeur / 10) * 10, apport: Math.round(apport), pente: pnt, confiance, poids };
+}

@@ -27,11 +27,15 @@ export const profilComplet = (p) => Boolean(p && (p.sexe === 'h' || p.sexe === '
 
 /**
  * @param {{sexe:'h'|'f', naissance:number, taille:number, poids:number, poidsCible:number, activite:number, rythme:number}} p
+ * @param {Date} aujourdhui
+ * @param {{ok:boolean, valeur:number, poids:number}} [mesure] dépense réelle mesurée (voir suivi.js) : quand elle est
+ *   disponible, elle remplace en partie la formule, selon la confiance qu'on peut lui accorder.
  */
-export function calculer(p, aujourdhui = new Date()) {
+export function calculer(p, aujourdhui = new Date(), mesure = null) {
   const age = aujourdhui.getFullYear() - p.naissance;
   const bmr = 10 * p.poids + 6.25 * p.taille - 5 * age + (p.sexe === 'h' ? 5 : -161);
-  const tdee = bmr * p.activite;
+  const tdeeFormule = bmr * p.activite;
+  const tdee = mesure?.ok ? mesure.poids * mesure.valeur + (1 - mesure.poids) * tdeeFormule : tdeeFormule;
   const aPerdre = Math.max(0, p.poids - p.poidsCible);
 
   // Déficit visé, plafonné à 25 % de la dépense et à 1 000 kcal par jour.
@@ -55,7 +59,7 @@ export function calculer(p, aujourdhui = new Date()) {
 
   const imcCible = p.poidsCible / (p.taille / 100) ** 2;
   return {
-    age, bmr: Math.round(bmr), tdee: Math.round(tdee), kcal, prot, gluc, lip,
+    age, bmr: Math.round(bmr), tdee: Math.round(tdee), tdeeFormule: Math.round(tdeeFormule), mesure: mesure?.ok ? mesure : null, kcal, prot, gluc, lip,
     kgSemaine, semaines, fin, limite, aPerdre,
     imcCibleBas: imcCible < 18.5, imcCible,
   };

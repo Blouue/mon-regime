@@ -100,6 +100,8 @@
       <label><input type="radio" name="per" value="365">1 an</label>
     </div>
     <p class="small" id="wtSum"></p><div class="fig"><svg id="cW" role="img" aria-label="Courbe du poids"></svg></div><p class="small legende"><span class="pt"></span> pesées <span class="tr"></span> tendance (moyenne sur 7 jours)</p></div>
+  <div class="lbl" id="depBox"><h2><span class="e" aria-hidden="true">🔥</span> Ma dépense réelle</h2><div id="depense"></div>
+    <details class="sub"><summary>Comment c'est calculé ?</summary><p class="small">Sur les 3 dernières semaines complètes, l'appli compare ce que tu as mangé (calories de Yazio) à l'évolution de ton poids lissé : 1 kg correspond à environ 7 700 kcal. Si tu as mangé 1 700 kcal par jour en perdant 0,5 kg par semaine, ta dépense réelle est d'environ 2 250 kcal. Les journées sous 800 kcal sont ignorées, car souvent mal notées. Le calcul se met à jour chaque lundi.</p></details></div>
   <div class="lbl"><h2><span class="e" aria-hidden="true">🏅</span> Mes réussites</h2><div id="series"></div><div class="badges" id="badges"></div></div>
   <div class="lbl"><h2><span class="e" aria-hidden="true">🗓️</span> Ma semaine dernière</h2><div id="semaine"></div></div>
   <div class="lbl"><h2><span class="e" aria-hidden="true">🔥</span> Calories de la semaine</h2><p class="small">Le pointillé, c'est ton objectif.</p><div class="fig s"><svg id="cK" role="img" aria-label="Calories des 7 derniers jours"></svg></div></div>

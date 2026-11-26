@@ -3,10 +3,10 @@ import { configured, currentUser, onAuth, handleRedirect, sendMagicLink, verifyC
 import { num, parseSanteText, normalize } from './parse.js';
 import { lineChart, barChart } from './charts.js';
 import { ACTIVITES, RYTHMES, activiteDepuisPas, profilComplet, calculer } from './calcul.js';
-import { tendanceAu, projection, serie, badges, semaineDerniere } from './suivi.js';
+import { tendanceAu, projection, serie, badges, semaineDerniere, depenseMesuree } from './suivi.js';
 import { lireExportSante } from './export-sante.js';
 
-const VERSION = '1.7.3';
+const VERSION = '1.8.0';
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const pad = (n) => String(n).padStart(2, '0');
@@ -213,7 +213,35 @@ function renderEvo() {
   ];
   $('bilan').innerHTML = tiles.map(([c, e, l, v]) => `<div class="tile ${c}"><div class="t-h"><span class="e" aria-hidden="true">${e}</span> ${l}</div><div class="v">${esc(v)}</div></div>`).join('');
   renderReussites();
+  renderDepense();
   $('semaine').innerHTML = htmlSemaine(semaineDerniere(S.days, o, T));
+}
+
+/* ---------- Dépense réelle mesurée ---------- */
+function renderDepense() {
+  const m = depenseMesuree(S.days, T), o = S.obj, el = $('depense');
+  if (!m.ok) {
+    const manque = Math.max(0, m.joursRequis - m.jours), manqueP = Math.max(0, m.peseesRequises - m.pesees);
+    const pct = Math.min(100, Math.round(((Math.min(m.jours, m.joursRequis) + Math.min(m.pesees, m.peseesRequises)) / (m.joursRequis + m.peseesRequises)) * 100));
+    el.innerHTML = m.incoherent
+      ? '<p class="small">Les données des 3 dernières semaines ne sont pas cohérentes (journées mal notées dans Yazio ?). La mesure reprendra la semaine prochaine.</p>'
+      : `<p>Encore un peu de patience : il faut au moins ${m.joursRequis} jours de calories notées et ${m.peseesRequises} pesées sur les 3 dernières semaines.</p>
+         <div class="meter"><i style="width:${pct}%"></i></div>
+         <p class="small">Pour l'instant : ${m.jours} jour${m.jours > 1 ? 's' : ''} noté${m.jours > 1 ? 's' : ''}${manque ? ` (encore ${manque})` : ' ✓'} et ${m.pesees} pesée${m.pesees > 1 ? 's' : ''}${manqueP ? ` (encore ${manqueP})` : ' ✓'}.</p>`;
+    return;
+  }
+  const conf = { bonne: ['herb', 'Bonne'], moyenne: ['sun', 'Moyenne'], faible: ['tom', 'Faible'] }[m.confiance];
+  const debut = frDate(m.debut, { day: 'numeric', month: 'short' }), fin = frDate(m.fin, { day: 'numeric', month: 'short' });
+  const sem = m.pente * 7;
+  // Comparaison avec la formule, si le profil est rempli
+  let compare = '';
+  if (profilComplet({ ...o, poids: lastWeight(T)?.v })) {
+    const f = calculer({ ...o, poids: lastWeight(T).v }).tdeeFormule, ecart = m.valeur - f;
+    compare = `<p class="small">La formule théorique estimait ${fr.format(f)} kcal : tu dépenses ${Math.abs(ecart) < 80 ? 'à peu près autant' : ecart > 0 ? `<b>${fr.format(ecart)} kcal de plus</b>` : `<b>${fr.format(-ecart)} kcal de moins</b>`}.${o.mode === 'auto' ? " Ton objectif en tient compte automatiquement, à chaque bilan du lundi." : ''}</p>`;
+  }
+  el.innerHTML = `<div class="dep"><div class="big">${fr.format(m.valeur)}</div><div class="small">kcal par jour</div><span class="conf ${conf[0]}">Confiance : ${conf[1]}</span></div>
+    <p>Du ${debut} au ${fin}, tu as mangé en moyenne <b>${fr.format(m.apport)} kcal</b> par jour et ta tendance a ${sem <= -0.05 ? `baissé de <b>${fr1.format(-sem)} kg</b>` : sem >= 0.05 ? `monté de <b>${fr1.format(sem)} kg</b>` : 'été <b>stable</b>'} par semaine.</p>
+    ${compare}`;
 }
 
 /* ---------- Séries et badges ---------- */
@@ -286,7 +314,7 @@ function renderCalc() {
   const p = lireProfil(), err = verifierProfil(p);
   if (err) { $('calcOut').innerHTML = `<p class="alerte">✋ ${esc(err)}</p>`; return; }
   if (!profilComplet(p)) { $('calcOut').innerHTML = '<p class="empty"><span class="e" aria-hidden="true">✨</span>Remplis tout pour découvrir ton objectif.</p>'; return; }
-  const r = calculer(p);
+  const r = calculer(p, new Date(), depenseMesuree(S.days, T));
   const quand = r.fin ? 'vers ' + r.fin.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }) : r.aPerdre > 0 ? '–' : 'Déjà atteint 🎉';
   let h = `<div class="tiles">
     <div class="tile tom"><div class="t-h"><span class="e" aria-hidden="true">🔥</span> Par jour</div><div class="v">${fr.format(r.kcal)} <span class="unit">kcal</span></div></div>
@@ -295,7 +323,9 @@ function renderCalc() {
   <div class="chips"><span>🥩 ${r.prot} g protéines</span><span>🍞 ${r.gluc} g glucides</span><span>🥑 ${r.lip} g lipides</span></div>`;
   if (r.limite) h += `<p class="alerte">⚠️ Pour rester en forme, on ne descend pas sous ${fr.format(p.sexe === 'h' ? 1500 : 1200)} kcal par jour : tu perdras plutôt ${fr1.format(r.kgSemaine)} kg par semaine.</p>`;
   if (r.imcCibleBas) h += `<p class="alerte">⚠️ Ce poids visé correspond à un IMC de ${fr1.format(r.imcCible)}, sous le seuil de 18,5. Mieux vaut en parler à un médecin.</p>`;
-  h += `<p class="small">Tu dépenses environ ${fr.format(r.tdee)} kcal par jour (dont ${fr.format(r.bmr)} au repos). ${r.aPerdre > 0 ? `Rythme prévu : −${fr1.format(r.kgSemaine)} kg par semaine.` : "C'est un objectif d'entretien."} Estimation selon la formule de Mifflin-St Jeor, pas un avis médical.</p>`;
+  h += `<p class="small">${r.mesure
+    ? `Ta dépense réelle, mesurée sur 3 semaines, est d'environ ${fr.format(r.mesure.valeur)} kcal par jour (la formule disait ${fr.format(r.tdeeFormule)}) : l'objectif s'appuie sur ${fr.format(r.tdee)} kcal.`
+    : `Tu dépenses environ ${fr.format(r.tdee)} kcal par jour (dont ${fr.format(r.bmr)} au repos), selon la formule de Mifflin-St Jeor. Après 3 semaines de suivi, l'appli mesurera ta dépense réelle.`} ${r.aPerdre > 0 ? `Rythme prévu : −${fr1.format(r.kgSemaine)} kg par semaine.` : "C'est un objectif d'entretien."} Estimation, pas un avis médical.</p>`;
   $('calcOut').innerHTML = h;
 }
 
@@ -305,14 +335,14 @@ async function recalcAuto() {
   if (demo || store.mode === 'signed-out' || o?.mode !== 'auto' || recalcAuto.enCours) return;
   const lw = lastWeight(T);
   if (!lw || !profilComplet({ ...o, poids: lw.v })) return;
-  const r = calculer({ ...o, poids: lw.v });
+  const m = depenseMesuree(S.days, T), r = calculer({ ...o, poids: lw.v }, new Date(), m);
   if (Math.abs(r.kcal - (o.kcal || 0)) < 20 && Math.abs(r.prot - (o.prot || 0)) < 5) return;
   recalcAuto.enCours = true;
   try {
     const n = { ...DEF_OBJ, ...o, kcal: r.kcal, prot: r.prot, gluc: r.gluc, lip: r.lip };
     await store.saveObj(n);
     real.obj = n; S.obj = { ...DEF_OBJ, ...n }; render();
-    toast(`🎯 Objectif ajusté à ta pesée : ${fr.format(r.kcal)} kcal par jour`);
+    toast(r.mesure ? `🎯 Bilan de la semaine : objectif ajusté à ${fr.format(r.kcal)} kcal, d'après ta dépense réelle` : `🎯 Objectif ajusté à ta pesée : ${fr.format(r.kcal)} kcal par jour`);
   } catch { /* on réessaiera à la prochaine synchronisation */ }
   recalcAuto.enCours = false;
 }
@@ -478,7 +508,7 @@ function bind() {
     const p = lireProfil(), err = verifierProfil(p);
     if (err) { toast(err); return; }
     if (!profilComplet(p)) { toast('Il manque une information pour faire le calcul'); return; }
-    const r = calculer(p), pas = Math.round(num($('aS').value) || real.obj?.pas || DEF_OBJ.pas);
+    const r = calculer(p, new Date(), depenseMesuree(S.days, T)), pas = Math.round(num($('aS').value) || real.obj?.pas || DEF_OBJ.pas);
     const o = { ...DEF_OBJ, ...real.obj, mode: 'auto', sexe: p.sexe, naissance: p.naissance, taille: p.taille, activite: p.activite, rythme: p.rythme,
       poidsCible: Math.round(p.poidsCible * 10) / 10, kcal: r.kcal, prot: r.prot, gluc: r.gluc, lip: r.lip, pas };
     const lw = lastWeight(T), poids = Math.round(p.poids * 10) / 10;
